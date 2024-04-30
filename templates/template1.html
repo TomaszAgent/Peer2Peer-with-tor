@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nigga Chat</title>
+  </head>
+  <body>
+    <h1>Hey, what's good, fam! Down for a little chat?</h1>
+
+    <div>
+        <input type="text" id="address">
+        <input type="text" id="msg" />
+
+        <button id="paramButton">Send</button>
+    </div>
+    
+    <a href="/inbox" id="anchorButton">Inbox</a>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{{ url_for('static', filename='/js/sending_req.js') }}"></script>
+  </body>
+</html>
