@@ -17,7 +17,7 @@ def service_setup(h, p, s):
     controller.authenticate()
     controller.set_options(
         [
-            ("HiddenServiceDir", os.getcwd()),
+            ("HiddenServiceDir", os.getcwd().replace("\\", "/")),
             ("HiddenServicePort", f"5000 {h}:{p}")
         ]
     )

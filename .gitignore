@@ -164,3 +164,7 @@ service*/hostname
 service*/*public_key
 service*/*secret_key
 service*/authorized_clients/
+src/hostname
+src/*public_key
+src/*secret_key
+src/authorized_clients/
