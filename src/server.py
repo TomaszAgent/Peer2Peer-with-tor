@@ -9,33 +9,28 @@ PORT = 5050
 
 
 def connection_handler(c):
-    message = read_data(c)
-    match message.split()[0]:
-        case "NEW":
-            if len(message.split()) > 3:
-                c.sendall("incorrect formatting".encode())
+    while True:
+        message = read_data(c)
+        match message.split()[0]:
+            case "NEW":
+                if len(message.split()) > 3:
+                    c.sendall("incorrect formatting".encode())
+                _, nick, address = message.split()
+                if nick in USERS:
+                    c.sendall("nick unavailable".encode())
+                if address in USERS.values():
+                    c.sendall("address already registered".encode())
+                if not address.isalnum() or len(address) != 56:
+                    c.sendall("incorrect address")
+                USERS[nick] = address
+            case "GET":
+                c.sendall((json.dumps(USERS) + "\n").encode())
+            case "CLOSE":
                 c.close()
                 return
-            _, nick, address = message.split()
-            if nick in USERS:
-                c.sendall("nick unavailable".encode())
-                c.close()
-                return
-            if address in USERS.values():
-                c.sendall("address already registered".encode())
-                c.close()
-                return
-            if not address.isalnum() or len(address) != 56:
-                c.sendall("incorrect address")
-                c.close()
-                return
-            USERS[nick] = address
-        case "GET":
-            c.sendall(json.dumps(USERS).encode())
-            c.close()
-        case _:
-            c.sendall("unsupported request")
-            c.close()
+            case _:
+                c.sendall("unsupported request")
+
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     service_setup(HOST, PORT, s)
