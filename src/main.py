@@ -1,8 +1,6 @@
 import socket
 import socks
-import os
 from _thread import start_new_thread
-from stem.control import Controller
 from shared import read_data, service_setup
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
