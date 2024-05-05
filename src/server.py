@@ -14,23 +14,28 @@ def connection_handler(c):
         case "NEW":
             if len(message.split()) > 3:
                 c.sendall("incorrect formatting".encode())
+                c.close()
                 return
             _, nick, address = message.split()
             if nick in USERS:
                 c.sendall("nick unavailable".encode())
+                c.close()
                 return
             if address in USERS.values():
                 c.sendall("address already registered".encode())
+                c.close()
                 return
             if not address.isalnum() or len(address) != 56:
                 c.sendall("incorrect address")
+                c.close()
                 return
             USERS[nick] = address
         case "GET":
             c.sendall(json.dumps(USERS).encode())
+            c.close()
         case _:
             c.sendall("unsupported request")
-
+            c.close()
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     service_setup(HOST, PORT, s)
