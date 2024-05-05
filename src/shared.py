@@ -7,7 +7,7 @@ def read_data(c):
     while b'\n' not in data:
         data += c.recv(1)
 
-    return data.decode()
+    return data.decode().strip()
 
 
 def service_setup(h, p, s):
@@ -17,7 +17,11 @@ def service_setup(h, p, s):
     controller.authenticate()
     controller.set_options(
         [
+            # client
             ("HiddenServiceDir", os.getcwd().replace("\\", "/")),
-            ("HiddenServicePort", f"5000 {h}:{p}")
+            ("HiddenServicePort", f"5000 127.0.0.1:5000"),
+            # server
+            ("HiddenServiceDir", os.getcwd().replace("\\", "/")),
+            ("HiddenServicePort", f"5050 127.0.0.1:5050"),
         ]
     )
