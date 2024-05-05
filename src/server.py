@@ -2,6 +2,8 @@ import socket
 from _thread import start_new_thread
 from shared import read_data, service_setup
 import json
+import os
+import time
 
 USERS = {}
 HOST = "127.0.0.1"
@@ -14,17 +16,17 @@ def connection_handler(c):
         match message.split()[0]:
             case "NEW":
                 if len(message.split()) > 3:
-                    c.sendall("incorrect formatting".encode())
+                    c.sendall("incorrect formatting\n".encode())
                     continue
                 _, nick, address = message.split()
                 if nick in USERS:
-                    c.sendall("nick unavailable".encode())
+                    c.sendall("nick unavailable\n".encode())
                     continue
                 if address in USERS.values():
-                    c.sendall("address already registered".encode())
+                    c.sendall("address already registered\n".encode())
                     continue
                 if not address.isalnum() or len(address) != 56:
-                    c.sendall("incorrect address")
+                    c.sendall("incorrect address\n".encode())
                     continue
                 USERS[nick] = address
                 c.sendall("registered\n".encode())
@@ -34,9 +36,18 @@ def connection_handler(c):
                 c.close()
                 return
             case _:
-                c.sendall("unsupported request")
+                c.sendall("unsupported request\n".encode())
 
 
+def user_printer():
+    while True:
+        os.system('cls')
+        for user in USERS:
+            print(f"{user}: {USERS[user]}")
+        time.sleep(1)
+
+
+start_new_thread(user_printer, ())
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     service_setup(HOST, PORT, s)
     while True:
