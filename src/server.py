@@ -27,7 +27,7 @@ def connection_handler(c):
                     c.sendall("incorrect address")
                     continue
                 USERS[nick] = address
-                c.sendall("registered")
+                c.sendall("registered\n".encode())
             case "GET":
                 c.sendall((json.dumps(USERS) + "\n").encode())
             case "CLOSE":
