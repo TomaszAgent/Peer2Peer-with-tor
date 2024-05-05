@@ -3,7 +3,7 @@ import socks
 import os
 from _thread import start_new_thread
 from stem.control import Controller
-from shared import read_data
+from shared import read_data, service_setup
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
 HOST = "127.0.0.1"
@@ -27,16 +27,7 @@ def messages_sender(c: socket.socket):
 
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, PORT))
-    s.listen(5)
-    controller = Controller.from_port(address="127.0.0.1", port=9151)
-    controller.authenticate()
-    controller.set_options(
-        [
-            ("HiddenServiceDir", os.getcwd()),
-            ("HiddenServicePort", f"5000 {HOST}:{str(PORT)}")
-        ]
-    )
+    service_setup(HOST, PORT, s)
     # TODO: implement connection with server
     # TODO: implement connecting to others
     # TODO: implement receiving messages in the background
