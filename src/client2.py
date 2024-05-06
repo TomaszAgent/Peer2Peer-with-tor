@@ -169,7 +169,7 @@ try:
             if register == 'y':
                 nick = click.prompt("Enter your nickname").replace(" ", "_")
 
-                address = open(f"{SERVICE_DIR}/hostname", "r").read().strip()
+                address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client2/hostname", "r").read().strip()
                 ss.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
                 res = read_data(ss)
 

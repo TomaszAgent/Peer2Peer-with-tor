@@ -12,7 +12,7 @@ HOST = "127.0.0.1"
 PORT = 5000
 # CURRENT_MESSENGER = "other nick"
 # USER_NICK = "my nick"
-SERVER_ADDRESS = "sjzh5pttbc2sqw3rwhcfistokg66ixn5h7lf3ckvgknuwby77723flad"
+SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
 SERVICE_DIR = os.getcwd().replace("\\", "/") + "/src/client"
 MESSAGING = False
 RUNNING = True
@@ -171,7 +171,7 @@ try:
             if register == 'y':
                 nick = click.prompt("Enter your nickname").replace(" ", "_")
 
-                address = open(f"{SERVICE_DIR}/hostname", "r").read().strip()
+                address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
                 ss.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
                 res = read_data(ss)
 
