@@ -1,20 +1,27 @@
-from stem.control import Controller
 import os
+import socket
+from stem.control import Controller
 
 PROJECT_PATH = os.getcwd().replace("\\", "/")
 
 
-def read_data(c):
+def read_data(client_socket: socket.socket) -> str:
+    """
+    Reads data from a socket. Function waits until message is completed using '\\n' as a delimiter.
+    """
     data = b''
     while b'\n' not in data:
-        data += c.recv(1)
+        data += client_socket.recv(1)
 
     return data.decode().strip()
 
 
-def service_setup(h, p, s):
-    s.bind((h, p))
-    s.listen(5)
+def service_setup(host: str, post: int, socket: socket.socket) -> None:
+    """
+    Set up a hidden service for the server and clients
+    """
+    socket.bind((host, post))
+    socket.listen(5)
     controller = Controller.from_port(address="127.0.0.1", port=9151)
     controller.authenticate()
     controller.set_options(
