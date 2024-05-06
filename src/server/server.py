@@ -15,24 +15,26 @@ def connection_handler(c):
         message = read_data(c)
         match message.split()[0]:
             case "NEW":
-                if len(message.split()) > 3:
+                if len(message.split()) > 4:
                     c.sendall("incorrect formatting\n".encode())
                     continue
-                _, nick, address = message.split()
-                if nick in USERS:
-                    c.sendall("nick unavailable\n".encode())
-                    continue
+                _, nick, address, port = message.split()
                 if address in USERS.values():
                     c.sendall("address already registered\n".encode())
+                    continue
+                if nick in USERS:
+                    c.sendall("nick unavailable\n".encode())
                     continue
                 if not address.isalnum() or len(address) != 56:
                     c.sendall("incorrect address\n".encode())
                     continue
-                USERS[nick] = address
+                USERS[nick] = (address, port)
                 c.sendall("registered\n".encode())
             case "GET":
                 c.sendall((json.dumps(USERS) + "\n").encode())
             case "CLOSE":
+                nick = message.split()[1]
+                USERS.pop(nick)
                 c.close()
                 return
             case _:
