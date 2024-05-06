@@ -1,7 +1,12 @@
 # Hidden Services files
-src/hidden_services/clients/client*/*
-src/hidden_services/server/*
-
+src/hidden_services/clients/client*/authorized_clients
+src/hidden_services/clients/client*/hostname
+src/hidden_services/clients/client*/*public_key
+src/hidden_services/clients/client*/*secret_key
+src/hidden_services/server/authorized_clients
+src/hidden_services/server/hostname
+src/hidden_services/server/*public_key
+src/hidden_services/server/*secret_key
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
