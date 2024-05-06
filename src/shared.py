@@ -7,7 +7,7 @@ PROJECT_PATH = os.getcwd().replace("\\", "/")
 
 def read_data(client_socket: socket.socket) -> str:
     """
-    Reads data from a socket. Function waits until message is completed using '\n' as a delimiter.
+    Reads data from a socket. Function waits until message is completed using '\\n' as a delimiter.
     """
     data = b''
     while b'\n' not in data:
