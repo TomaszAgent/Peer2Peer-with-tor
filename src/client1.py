@@ -90,7 +90,7 @@ def start_chat():
         click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
         socket_connection.connect((f"{chosen_user[0]}.onion", int(chosen_user[1])))
         
-        socket_connection.sendall(f"NEW {nick} {address} {PORT}\n".encode())
+        socket_connection.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
 
         chats[chosen_user_nick] = {
             "messages": [],
