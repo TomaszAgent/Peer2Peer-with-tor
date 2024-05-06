@@ -1,3 +1,7 @@
+# Hidden Services files
+hidden_services/clients/
+hidden_services/server
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
