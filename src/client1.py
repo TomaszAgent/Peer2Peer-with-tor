@@ -1,13 +1,10 @@
 import socket
 import socks
-# from _thread import start_new_thread
 import threading
 from shared import read_data, service_setup
 import json
 import os
 import click
-
-from rich.prompt import Prompt
 
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
@@ -33,6 +30,7 @@ def messages_receiver():
                 messenger_socket = chats[messenger]["socket"]
                 if message := read_data(messenger_socket):
                     with NEW_MESSAGE_LOCK:
+                        global new_message
                         new_message = True
                     chats[messenger]["messages"].append(f"{messenger}: {message}")
 
