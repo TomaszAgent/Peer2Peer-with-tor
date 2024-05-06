@@ -28,7 +28,7 @@ def service_setup(host: str, post: int, socket: socket.socket) -> None:
         [
             # Client 1
             ("HiddenServiceDir", f"{PROJECT_PATH}/src/hidden_services/clients/client1"),
-            ("HiddenServicePort", "5000 127.0.0.1:5000"),
+            ("HiddenServicePort", "5001 127.0.0.1:5001"),
             # Client 2
             ("HiddenServiceDir", f"{PROJECT_PATH}/src/hidden_services/clients/client2"),
             ("HiddenServicePort", "5025 127.0.0.1:5025"),

@@ -9,7 +9,7 @@ import click
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
 HOST = "127.0.0.1"
-PORT = 5000
+PORT = 5001
 # CURRENT_MESSENGER = "other nick"
 # USER_NICK = "my nick"
 SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
@@ -28,11 +28,11 @@ def messages_receiver():
         for messenger in chats:
             with CHATS_LOCK:
                 messenger_socket = chats[messenger]["socket"]
-                if message := read_data(messenger_socket):
-                    with NEW_MESSAGE_LOCK:
-                        global new_message
-                        new_message = True
-                    chats[messenger]["messages"].append(f"{messenger}: {message}")
+                message = read_data(messenger_socket)
+                with NEW_MESSAGE_LOCK:
+                    global new_message
+                    new_message = True
+                chats[messenger]["messages"].append(f"{messenger}: {message}")
 
 
 # def messages_sender(c: socket.socket):

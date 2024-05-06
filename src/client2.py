@@ -15,7 +15,7 @@ HOST = "127.0.0.1"
 PORT = 5025
 # CURRENT_MESSENGER = "other nick"
 # USER_NICK = "my nick"
-SERVER_ADDRESS = "sjzh5pttbc2sqw3rwhcfistokg66ixn5h7lf3ckvgknuwby77723flad"
+SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
 SERVICE_DIR = os.getcwd().replace("\\", "/") + "/src/client_second"
 MESSAGING = False
 RUNNING = True
@@ -24,16 +24,17 @@ NEW_MESSAGE_LOCK = threading.Lock()
 chats = {}
 CHATS_LOCK = threading.Lock()
 
+
 def messages_receiver():
     while True:
         for messenger in chats:
             with CHATS_LOCK:
                 messenger_socket = chats[messenger]["socket"]
-                if message := read_data(messenger_socket):
-                    with NEW_MESSAGE_LOCK:
-                        global new_message
-                        new_message = True
-                    chats[messenger]["messages"].append(f"{messenger}: {message}")
+                message = read_data(messenger_socket)
+                with NEW_MESSAGE_LOCK:
+                    global new_message
+                    new_message = True
+                chats[messenger]["messages"].append(f"{messenger}: {message}")
 
 
 # def messages_sender(c: socket.socket):
