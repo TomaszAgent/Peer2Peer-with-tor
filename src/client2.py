@@ -148,10 +148,12 @@ def new_connection():
             c, addr = s.accept()
             click.echo(f"New connection from {addr}")
             m = read_data(c)
-            chats[m] = {
+            _, nick, addr, port = m.split()
+            chats[nick] = {
                 "messages": [],
                 "socket": c,
-                "address": addr
+                "address": addr,
+                "port": port
             }
         except Exception as e:
             print(e)
