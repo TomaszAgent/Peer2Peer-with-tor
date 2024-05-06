@@ -1,4 +1,6 @@
 import socket
+import time
+
 import socks
 import threading
 from shared import read_data, service_setup
@@ -10,7 +12,7 @@ import click
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
 HOST = "127.0.0.1"
 PORT = 5001
-# CURRENT_MESSENGER = "other nick"
+CURRENT_MESSENGER = None
 # USER_NICK = "my nick"
 SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
 SERVICE_DIR = os.getcwd().replace("\\", "/") + "/src/client"
@@ -24,11 +26,15 @@ CHATS_LOCK = threading.Lock()
 
 
 def messages_receiver():
-    while True:
+    global RUNNING
+    while RUNNING:
         for messenger in chats:
             with CHATS_LOCK:
                 messenger_socket = chats[messenger]["socket"]
                 message = read_data(messenger_socket)
+                if message == "\\close":
+                    chats.pop(messenger)
+                    messenger_socket.close()
                 with NEW_MESSAGE_LOCK:
                     global new_message
                     new_message = True
@@ -53,15 +59,26 @@ def messages_receiver():
 #         print(*chats[CURRENT_MESSENGER], sep="\n")
 #         time.sleep(1)
 
-def close_app():
+def close_app(server_response=None):
+    global RUNNING
+    RUNNING = False
+    if server_response is not None:
+        click.echo(f"Server response: {res.strip()}")
+        click.secho("There was an error while registering. Exiting application.", fg="red")
+        quit()
+    os.system("cls")
+    click.echo("Exiting application")
     with socks.socksocket() as ss:
         ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
         ss.sendall(f"CLOSE {nick}\n".encode())
         ss.close()
 
-    # TODO implement closing all connections (imo sending a message to all users to close the connection)
+    for connection in [chats[messenger]["socket"] for messenger in chats]:
+        connection.sendall("\\close\n".encode())
+        connection.close()
 
     quit()
+
 
 def print_messages(messenger):
     os.system("cls")
@@ -76,8 +93,11 @@ def get_users():
     
 
 def start_chat():
+    os.system("cls")
+    click.echo("Loading users...")
     users = get_users()
-    click.echo("Select a user to chat with")
+    os.system("cls")
+    click.echo("Select a user to start chat with")
     for user in users:
         if user == nick:
             continue
@@ -102,9 +122,27 @@ def start_chat():
         click.echo("Chat started")
 
         return
-    
+
+
+def write_message():
+    global CURRENT_MESSENGER, MESSAGING
+    MESSAGING = True
+    message = click.prompt("message: ")
+    chats[CURRENT_MESSENGER]["socket"].sendall((message + "\n").encode())
+
+
+def chat_options():
+    global CURRENT_MESSENGER
+    match click.getchar():
+        case "1":
+            write_message()
+        case "2":
+            CURRENT_MESSENGER = None
+
 
 def choose_chat():
+    global CURRENT_MESSENGER
+    os.system("cls")
     click.echo("Select a chat")
     if not chats:
         return "No chats available"
@@ -114,34 +152,42 @@ def choose_chat():
     if chat_choice not in chats:
         click.secho("Invalid choice", fg="red")
         return
-    print(chats[chat_choice]["messages"])
+    CURRENT_MESSENGER = chat_choice
+    chat_options_thread = threading.Thread(target=chat_options, daemon=True)
+    chat_options_thread.start()
+    while CURRENT_MESSENGER and not MESSAGING:
+        os.system("cls")
+        print("1 - write a message; 2 - quit")
+        print(*chats[chat_choice]["messages"], sep="\n")
+        time.sleep(1)
+
 
 
 def user_options():
-    global RUNNING
-    click.echo("What do you want to do?")
-    click.echo("[1] Start a chat")
-    click.echo("[2] Your chats (new messages)" if new_message else "[2] Your chats")
-    click.echo("[3] Quit")
+    global MESSAGING
+    while True:
+        while MESSAGING:
+            pass
+        os.system("cls")
+        click.echo("What do you want to do?")
+        click.echo("[1] Start a chat")
+        click.echo("[2] Your chats (new messages)" if new_message else "[2] Your chats")
+        click.echo("[3] Quit")
 
-    match click.getchar():
-        case '1':
-            click.echo("Starting a chat")
-            start_chat()
-        case '2':
-            choose_chat()
-            return
-        case '3':
-            click.echo("Exiting application")
-            RUNNING = False
-            close_app()
-        case _:
-            click.echo("Invalid choice")
-            return
-        
+        match click.getchar():
+            case '1':
+                start_chat()
+            case '2':
+                choose_chat()
+            case '3':
+                close_app()
+            case _:
+                click.echo("Invalid choice")
+
 
 def new_connection():
-    while True:        
+    global RUNNING
+    while RUNNING:
         try:
             c, addr = s.accept()
             click.echo(f"New connection from {addr}")
@@ -163,44 +209,21 @@ try:
         with socks.socksocket() as ss:
             ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
 
-            # Registering
-            click.echo("Do you want to register? [y/n] ", nl=False)
-            register = click.getchar()
-            click.echo()
+            os.system("cls")
+            nick = click.prompt("Enter your nickname").replace(" ", "_")
+            address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
+            ss.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
+            res = read_data(ss)
 
-            if register == 'y':
-                nick = click.prompt("Enter your nickname").replace(" ", "_")
+            # TODO: Implement handling server responses for registration
+            if res.strip() != "registered":
+                close_app(server_response=res.strip())
 
-                address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
-                ss.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
-                res = read_data(ss)
-
-                # TODO: Implement handling server responses for registration
-                if res.strip() != "registered":
-                    click.echo(f"Server response: {res.strip()}")
-                    click.secho("There was an error while registering. Exiting application.", fg="red")
-                    close_app()
-            else:
-                click.echo("Exiting application")
-                close_app()
-            ss.sendall("GET\n".encode())
-            users = json.loads(read_data(ss))
-
-            click.echo()
-
-            click.secho("Users:", bold=True)
-            for idx, user in enumerate(users):
-                print(f"{idx+1}. {user}")
-
-        # TODO: implement connecting to others
-        # TODO: implement saving nicks
         new_connection_thread = threading.Thread(target=new_connection, daemon=True)
         messages_receiver_thread = threading.Thread(target=messages_receiver, daemon=True)
         new_connection_thread.start()
         messages_receiver_thread.start()
-        while RUNNING:
-            user_options()
-            # THIS ONLY ACCEPTS INCOMING MESSAGES - IMPLEMENT SENDING AND DISPLAYING THEM
+        user_options()
 except KeyboardInterrupt:
     close_app()
 except Exception as e:
