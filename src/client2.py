@@ -1,31 +1,31 @@
 import socket
+import time
+
 import socks
-# from _thread import start_new_thread
 import threading
 from shared import read_data, service_setup
 import json
 import os
-import time
 import click
-
-from rich.prompt import Prompt
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
 HOST = "127.0.0.1"
 PORT = 5025
 CURRENT_MESSENGER = None
-# USER_NICK = "my nick"
+USER_NICK = ""
 SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
-SERVICE_DIR = os.getcwd().replace("\\", "/") + "/src/client_second"
+SERVICE_DIR = os.getcwd().replace("\\", "/") + "/src/client"
 MESSAGING = False
 RUNNING = True
+connected = False
 new_message = False
-NEW_MESSAGE_LOCK = threading.Lock()
 chats = {}
+NEW_MESSAGE_LOCK = threading.Lock()
 CHATS_LOCK = threading.Lock()
 
 
 def messages_receiver():
+    global RUNNING
     while RUNNING:
         for messenger in chats:
             with CHATS_LOCK:
@@ -64,11 +64,12 @@ def close_app(server_response=None):
     if server_response is not None:
         click.echo(f"Server response: {res.strip()}")
         click.secho("There was an error while registering. Exiting application.", fg="red")
+        quit()
     os.system("cls")
     click.echo("Exiting application")
     with socks.socksocket() as ss:
         ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
-        ss.sendall(f"CLOSE {nick}\n".encode())
+        ss.sendall(f"CLOSE {USER_NICK}\n".encode())
         ss.close()
 
     for connection in [chats[messenger]["socket"] for messenger in chats]:
@@ -76,7 +77,7 @@ def close_app(server_response=None):
         connection.close()
 
     quit()
-    
+
 
 def print_messages(messenger):
     os.system("cls")
@@ -88,7 +89,7 @@ def get_users():
         ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
         ss.sendall("GET\n".encode())
         return json.loads(read_data(ss))
-    
+
 
 def start_chat():
     os.system("cls")
@@ -97,36 +98,40 @@ def start_chat():
     os.system("cls")
     click.echo("Select a user to start chat with")
     for user in users:
-        if user == nick:
+        if user == USER_NICK:
             continue
         click.echo(f"- {user}")
 
     chosen_user_nick = click.prompt("Type nickname", type=str)
     chosen_user = users[chosen_user_nick]
 
-    with socks.socksocket() as socket_connection:
-        click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
-        socket_connection.connect((f"{chosen_user[0]}.onion", int(chosen_user[1])))
+    socket_connection = socks.socksocket()
+    click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
+    socket_connection.connect((f"{chosen_user[0]}.onion", int(chosen_user[1])))
 
-        socket_connection.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
-        
-        chats[chosen_user_nick] = {
-            "messages": [],
-            "socket": socket_connection,
-            "address": chosen_user[0],
-            "port": chosen_user[1]
-        }
+    socket_connection.sendall(f"NEW {USER_NICK} {address[:-6]} {PORT}\n".encode())
 
-        click.echo("Chat started")
+    chats[chosen_user_nick] = {
+        "messages": [],
+        "socket": socket_connection,
+        "address": chosen_user[0],
+        "port": chosen_user[1]
+    }
 
-        return
+    click.echo("Chat started")
+
+    return
 
 
 def write_message():
     global CURRENT_MESSENGER, MESSAGING
     MESSAGING = True
-    message = click.prompt("message: ")
-    chats[CURRENT_MESSENGER]["socket"].sendall((message + "\n").encode())
+    os.system("cls")
+    message = click.prompt("message")
+    s = chats[CURRENT_MESSENGER]["socket"]
+    s.sendall((message + "\n").encode())
+    chats[CURRENT_MESSENGER]["messages"].append(f'{USER_NICK}')
+    MESSAGING = False
 
 
 def chat_options():
@@ -139,7 +144,7 @@ def chat_options():
 
 
 def choose_chat():
-    global CURRENT_MESSENGER, MESSAGING
+    global CURRENT_MESSENGER
     os.system("cls")
     click.echo("Select a chat")
     if not chats:
@@ -178,10 +183,9 @@ def user_options():
                 choose_chat()
             case '3':
                 close_app()
-                return
             case _:
                 click.echo("Invalid choice")
-        
+
 
 def new_connection():
     global RUNNING
@@ -200,25 +204,24 @@ def new_connection():
         except Exception as e:
             print(e)
 
+
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         service_setup(HOST, PORT, s)
         with socks.socksocket() as ss:
             ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
 
-            # Registering
             os.system("cls")
-            nick = click.prompt("Enter your nickname").replace(" ", "_")
-            address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client2/hostname", "r").read().strip()
-            ss.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
+            USER_NICK = click.prompt("Enter your nickname").replace(" ", "_")
+            address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname",
+                           "r").read().strip()
+            ss.sendall(f"NEW {NICK} {address[:-6]} {PORT}\n".encode())
             res = read_data(ss)
 
             # TODO: Implement handling server responses for registration
             if res.strip() != "registered":
                 close_app(server_response=res.strip())
 
-        # TODO: implement connecting to others
-        # TODO: implement saving nicks
         new_connection_thread = threading.Thread(target=new_connection, daemon=True)
         messages_receiver_thread = threading.Thread(target=messages_receiver, daemon=True)
         new_connection_thread.start()

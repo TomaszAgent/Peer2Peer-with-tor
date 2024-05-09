@@ -13,7 +13,7 @@ socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
 HOST = "127.0.0.1"
 PORT = 5001
 CURRENT_MESSENGER = None
-# USER_NICK = "my nick"
+USER_NICK = ""
 SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
 SERVICE_DIR = os.getcwd().replace("\\", "/") + "/src/client"
 MESSAGING = False
@@ -70,7 +70,7 @@ def close_app(server_response=None):
     click.echo("Exiting application")
     with socks.socksocket() as ss:
         ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
-        ss.sendall(f"CLOSE {nick}\n".encode())
+        ss.sendall(f"CLOSE {USER_NICK}\n".encode())
         ss.close()
 
     for connection in [chats[messenger]["socket"] for messenger in chats]:
@@ -99,36 +99,40 @@ def start_chat():
     os.system("cls")
     click.echo("Select a user to start chat with")
     for user in users:
-        if user == nick:
+        if user == USER_NICK:
             continue
         click.echo(f"- {user}")
 
     chosen_user_nick = click.prompt("Type nickname", type=str)
     chosen_user = users[chosen_user_nick]
 
-    with socks.socksocket() as socket_connection:
-        click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
-        socket_connection.connect((f"{chosen_user[0]}.onion", int(chosen_user[1])))
+    socket_connection = socks.socksocket()
+    click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
+    socket_connection.connect((f"{chosen_user[0]}.onion", int(chosen_user[1])))
         
-        socket_connection.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
+    socket_connection.sendall(f"NEW {USER_NICK} {address[:-6]} {PORT}\n".encode())
 
-        chats[chosen_user_nick] = {
-            "messages": [],
-            "socket": socket_connection,
-            "address": chosen_user[0],
-            "port": chosen_user[1]
-        }
+    chats[chosen_user_nick] = {
+        "messages": [],
+        "socket": socket_connection,
+        "address": chosen_user[0],
+        "port": chosen_user[1]
+    }
 
-        click.echo("Chat started")
+    click.echo("Chat started")
 
-        return
+    return
 
 
 def write_message():
     global CURRENT_MESSENGER, MESSAGING
     MESSAGING = True
-    message = click.prompt("message: ")
-    chats[CURRENT_MESSENGER]["socket"].sendall((message + "\n").encode())
+    os.system("cls")
+    message = click.prompt("message")
+    s = chats[CURRENT_MESSENGER]["socket"]
+    s.sendall((message + "\n").encode())
+    chats[CURRENT_MESSENGER]["messages"].append(f'{USER_NICK}')
+    MESSAGING = False
 
 
 def chat_options():
@@ -160,7 +164,6 @@ def choose_chat():
         print("1 - write a message; 2 - quit")
         print(*chats[chat_choice]["messages"], sep="\n")
         time.sleep(1)
-
 
 
 def user_options():
@@ -210,9 +213,9 @@ try:
             ss.connect((f"{SERVER_ADDRESS}.onion", 5050))
 
             os.system("cls")
-            nick = click.prompt("Enter your nickname").replace(" ", "_")
+            USER_NICK = click.prompt("Enter your nickname").replace(" ", "_")
             address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
-            ss.sendall(f"NEW {nick} {address[:-6]} {PORT}\n".encode())
+            ss.sendall(f"NEW {NICK} {address[:-6]} {PORT}\n".encode())
             res = read_data(ss)
 
             # TODO: Implement handling server responses for registration
