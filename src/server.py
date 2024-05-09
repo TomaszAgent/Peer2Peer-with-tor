@@ -44,6 +44,7 @@ def connection_handler(c):
 def user_printer():
     while True:
         os.system('cls')
+        print(f"There is {len(USERS)} user(s) connected: ")
         for user in USERS:
             print(f"{user}: {USERS[user]}")
         time.sleep(1)
