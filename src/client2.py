@@ -130,7 +130,7 @@ def write_message():
     message = click.prompt("message")
     s = chats[CURRENT_MESSENGER]["socket"]
     s.sendall((message + "\n").encode())
-    chats[CURRENT_MESSENGER]["messages"].append(f'{USER_NICK}')
+    chats[CURRENT_MESSENGER]["messages"].append(f'{USER_NICK}: {message}')
     MESSAGING = False
 
 
