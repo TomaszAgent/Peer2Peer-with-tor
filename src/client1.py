@@ -19,48 +19,36 @@ running = True
 nick = None
 connected = False
 current_messenger = None
-new_message = False
 chats = {}
 
 # Locks
-NEW_MESSAGE_LOCK = threading.Lock()
 CHATS_LOCK = threading.Lock()
+
+def clean_terminal():
+    """
+    This function is responsible for cleaning the terminal.
+    """
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 
 def messages_receiver(messenger: str):
     """
     This function is responsible for receiving messages from the server and other clients.
     """
-    global running, new_message        
+    global running        
 
     while running:
         with CHATS_LOCK:
             messenger_socket = chats[messenger]["socket"]
             message = read_data(messenger_socket)
 
-            with NEW_MESSAGE_LOCK:
-                new_message = True
-
+            if message == "/CHAT CLOSE":
+                # TODO: If user is in chat with that user move user to main menu (AKA choose_option)
+                messenger_socket.close()
+                chats.pop(messenger)
+                return
             chats[messenger]["messages"].append(f"{messenger}: {message}")
 
-
-# def messages_sender(c: socket.socket):
-#     global MESSAGING
-#     MESSAGING = True
-#     while True:
-#         message = input()
-#         if message == "\\quit":
-#             MESSAGING = False
-#             break
-#         c.sendall(message.encode())
-#         chats[CURRENT_MESSENGER].append(f'You: {message}')
-
-
-# def message_printer():
-#     while MESSAGING:
-#         os.system("cls")
-#         print(*chats[CURRENT_MESSENGER], sep="\n")
-#         time.sleep(1)
 
 def close_app(server_response: str | None = None) -> None:
     """
@@ -69,7 +57,7 @@ def close_app(server_response: str | None = None) -> None:
     global running
 
     running = False
-    os.system("cls")
+    # os.system("cls")
     if server_response is not None:
         click.echo(f"Server response: {server_response.strip()}")
         click.secho("There was an error while registering. Exiting application.", fg="red")
@@ -82,18 +70,10 @@ def close_app(server_response: str | None = None) -> None:
         server_socket.close()
 
     for connection in [chats[messenger]["socket"] for messenger in chats]:
-        connection.sendall("\\close\n".encode())
+        connection.sendall("/CHAT CLOSE\n".encode())
         connection.close()
 
     quit()
-
-
-def print_messages(messenger: str) -> None:
-    """
-    This function is responsible for printing messages from a specific chat.
-    """
-    os.system("cls")
-    print(*chats[messenger]["messages"], sep="\n")
 
 
 def get_users() -> dict:
@@ -110,10 +90,12 @@ def start_chat() -> None:
     """
     This function is responsible for starting a chat with another user.
     """
-    os.system("cls")
+    global current_messenger
+
+    clean_terminal()
     click.echo("Loading users...")
     users = get_users()
-    os.system("cls")
+    clean_terminal()
     click.echo("Select a user to start chat with")
 
     for user in users:
@@ -124,11 +106,13 @@ def start_chat() -> None:
     chosen_user_nick = click.prompt("Type nickname", type=str)
 
     if chosen_user_nick not in users:
-        os.system("cls")
+        clean_terminal()
         click.secho("Invalid choice", fg="red")
         return
 
     chosen_user = users[chosen_user_nick]
+
+    clean_terminal()
 
     socket_connection = socks.socksocket()
     click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
@@ -143,9 +127,14 @@ def start_chat() -> None:
         "port": chosen_user[1]
     }
 
+    # Create new thread for receiving messages
+    messages_receiver_thread = threading.Thread(target=messages_receiver, args=(chosen_user_nick,), daemon=True)
+    messages_receiver_thread.start()
+
     click.echo("Chat started")
 
-    return
+    current_messenger = chosen_user_nick
+    chat()
 
 
 def write_message() -> None:
@@ -156,11 +145,19 @@ def write_message() -> None:
 
     messaging = True
     os.system("cls")
-    message = click.prompt("message")
-    s = chats[current_messenger]["socket"]
-    s.sendall((message + "\n").encode())
+    message = click.prompt("Write message")
+    socket = chats[current_messenger]["socket"]
+
+    if message == "/CHAT CLOSE":
+        socket.sendall("/CHAT CLOSE\n".encode())
+        chats.pop(current_messenger)
+        messaging = False
+        return
+    socket.sendall((message + "\n").encode())
     chats[current_messenger]["messages"].append(f'{nick}: {message}')
     messaging = False
+
+    chat()
 
 
 def chat_options() -> None:
@@ -176,13 +173,25 @@ def chat_options() -> None:
             current_messenger = None
 
 
+def chat() -> None:
+    chat_options_thread = threading.Thread(target=chat_options, daemon=True)
+    chat_options_thread.start()
+    while current_messenger and not messaging:
+        clean_terminal()
+        click.echo(f"Chatting with {current_messenger}\n")
+        print(*chats[current_messenger]["messages"], sep="\n")
+
+        click.echo("\n[1] Write message")
+        click.echo("[2] Close chat")
+        time.sleep(1)
+
 def choose_chat() -> None:
     """
     This function is responsible for choosing a chat.
     """
     global current_messenger
     
-    os.system("cls")
+    clean_terminal()
     click.echo("Select a chat")
 
     if not chats:
@@ -194,14 +203,10 @@ def choose_chat() -> None:
     if chat_choice not in chats:
         click.secho("Invalid choice", fg="red")
         return
+    
     current_messenger = chat_choice
-    chat_options_thread = threading.Thread(target=chat_options, daemon=True)
-    chat_options_thread.start()
-    while current_messenger and not messaging:
-        os.system("cls")
-        print("1 - write a message; 2 - quit")
-        print(*chats[chat_choice]["messages"], sep="\n")
-        time.sleep(1)
+
+    chat()
 
 
 
@@ -210,13 +215,14 @@ def user_options() -> None:
     This function is responsible for handling user options.
     """
     global messaging
+
     while True:
         while messaging:
             pass
-        os.system("cls")
+        clean_terminal()
         click.echo("What do you want to do?")
         click.echo("[1] Start a chat")
-        click.echo("[2] Your chats (new messages)" if new_message else "[2] Your chats")
+        click.echo("[2] Your chats")
         click.echo("[3] Quit")
 
         match click.getchar():
@@ -242,12 +248,17 @@ def new_connection()-> None:
             click.echo(f"New connection from {addr}")
             m = read_data(c)
             _, nick, addr, port = m.split()
+
             chats[nick] = {
                 "messages": [],
                 "socket": c,
                 "address": addr,
                 "port": port
             }
+
+            # Create new thread for receiving messages
+            messages_receiver_thread = threading.Thread(target=messages_receiver, args=(nick,), daemon=True)
+            messages_receiver_thread.start()
         except Exception as e:
             print(e)
 
@@ -261,7 +272,7 @@ def register() -> None:
     with socks.socksocket() as server_socket:
         server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
 
-        os.system("cls")
+        clean_terminal()
         nick = click.prompt("Enter your nickname").replace(" ", "_")
         server_socket.sendall(f"NEW {nick} {ADDRESS[:-6]} {PORT}\n".encode())
         res = read_data(server_socket)
@@ -276,10 +287,11 @@ if __name__ == "__main__":
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             service_setup(HOST, PORT, s)
             register()
+
+            # Create new thread for handling new connections
             new_connection_thread = threading.Thread(target=new_connection, daemon=True)
-            messages_receiver_thread = threading.Thread(target=messages_receiver, daemon=True)
             new_connection_thread.start()
-            messages_receiver_thread.start()
+
             user_options()
     except KeyboardInterrupt:
         close_app()
