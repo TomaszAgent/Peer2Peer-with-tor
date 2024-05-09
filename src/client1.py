@@ -215,7 +215,7 @@ try:
             os.system("cls")
             USER_NICK = click.prompt("Enter your nickname").replace(" ", "_")
             address = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
-            ss.sendall(f"NEW {NICK} {address[:-6]} {PORT}\n".encode())
+            ss.sendall(f"NEW {USER_NICK} {address[:-6]} {PORT}\n".encode())
             res = read_data(ss)
 
             # TODO: Implement handling server responses for registration
