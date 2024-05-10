@@ -5,8 +5,11 @@ import time
 import threading
 
 import click
+import halo
 import socks
-from shared import read_data, service_setup
+from cryptography.hazmat.primitives import serialization
+
+from shared import *
 
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
@@ -14,21 +17,23 @@ HOST = "127.0.0.1"
 PORT = 5001
 SERVER_ADDRESS = "yhpc3gkjqemsfpc4hcnfrvciil3xqgis4ipqfgootcgigawltlunxzqd"
 ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
+server_public_key = None
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+connected = False
 messaging = False
 running = True
 nick = None
-connected = False
 current_messenger = None
 chats = {}
 
 # Locks
 LOCK = threading.Lock()
 
-def clean_terminal():
-    """
-    This function is responsible for cleaning the terminal.
-    """
-    os.system('cls' if os.name == 'nt' else 'clear')
+PRIVATE_KEY, PUBLIC_KEY = rsa_keypair()
+PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+)
 
 
 def messages_receiver(messenger: str):
@@ -56,7 +61,7 @@ def close_app(server_response: str | None = None) -> None:
     """
     This function is responsible for safely closing the application.
     """
-    global running
+    global running, server_socket
 
     with LOCK:
         running = False
@@ -67,33 +72,39 @@ def close_app(server_response: str | None = None) -> None:
         quit()
     
     click.echo("Exiting application")
-    with socks.socksocket() as server_socket:
-        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
-        server_socket.sendall(f"CLOSE {nick}\n".encode())
+
+    # TODO: Implement decrypting the message
+    if connected:
+        server_socket.sendall(f"CLOSE {nick}\n\n".encode())
         server_socket.close()
 
-    for connection in [chats[messenger]["socket"] for messenger in chats]:
-        connection.sendall("/CHAT CLOSE\n".encode())
-        connection.close()
+        for connection in [chats[messenger]["socket"] for messenger in chats]:
+            connection.sendall("/CHAT CLOSE\n\n".encode())
+            connection.close()
 
     quit()
 
 
-def get_users() -> dict:
+def get_users() -> list[str]:
     """
     This function is responsible for getting all users from the server.
     """
-    with socks.socksocket() as server_socket:
-        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
-        server_socket.sendall("GET\n".encode())
-        return json.loads(read_data(server_socket))
+    global server_socket
+
+    encrypted_message = encrypt("GET", server_public_key)
+    server_socket.sendall(encrypted_message + b"\n\n")
+
+    res = read_data(server_socket, return_bytes=True)
+    res_decrypted = decrypt(res, PRIVATE_KEY)
+
+    return json.loads(res_decrypted)
     
 
 def start_chat() -> None:
     """
     This function is responsible for starting a chat with another user.
     """
-    global current_messenger
+    global current_messenger, server_socket
 
     clean_terminal()
     click.echo("Loading users...")
@@ -101,39 +112,47 @@ def start_chat() -> None:
     clean_terminal()
     click.echo("Select a user to start chat with")
 
+    users.pop(nick)
     for user in users:
-        if user == nick:
-            continue
         click.echo(f"- {user}")
 
     chosen_user_nick = click.prompt("Type nickname", type=str)
-
-    if chosen_user_nick == nick:
-        clean_terminal()
-        click.secho("You can't chat with yourself", fg="red")
-        return
 
     if chosen_user_nick not in users:
         clean_terminal()
         click.secho("Invalid choice", fg="red")
         return
 
-    chosen_user = users[chosen_user_nick]
+    # chosen_user = users[chosen_user_nick]
+    # Request for the user's address and port and public key
+    messenger_data = read_data(server_socket, return_bytes=True)
+    messenger_data = decrypt(messenger_data, PRIVATE_KEY)
+    messenger_addr, messenger_port = messenger_data.split()
+
+    print(messenger_addr, messenger_port)
+
+    messenger_public_key = read_data(server_socket)
+    messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
+
+    print(messenger_public_key)
 
     clean_terminal()
 
     socket_connection = socks.socksocket()
-    click.echo(f"Connecting to {chosen_user[0]} on port {chosen_user[1]}...")
-    socket_connection.connect((f"{chosen_user[0]}.onion", int(chosen_user[1])))
-        
+    click.echo(f"Connecting to {messenger_addr} on port {messenger_port}...")
+    socket_connection.connect((f"{messenger_addr}.onion", int(messenger_port)))
+    
+    # TODO: Implement encrypting the message using the server's public key
+    # TODO: Add signature to the message
     socket_connection.sendall(f"NEW {nick} {ADDRESS[:-6]} {PORT}\n".encode())
 
     with LOCK:
+        # TODO: Implement saving messenger's public key
         chats[chosen_user_nick] = {
             "messages": [],
             "socket": socket_connection,
-            "address": chosen_user[0],
-            "port": chosen_user[1]
+            "address": messenger_addr,
+            "port": messenger_port
         }
 
     # Create new thread for receiving messages
@@ -148,6 +167,7 @@ def start_chat() -> None:
     chat()
 
 
+
 def write_message() -> None:
     """
     This function is responsible for writing a message to a chat.
@@ -156,7 +176,10 @@ def write_message() -> None:
 
     with LOCK:
         messaging = True
+
     clean_terminal()
+
+    # TODO: Implement encrypting the message using the messenger's public key
     message = click.prompt("Write message")
     socket = chats[current_messenger]["socket"]
 
@@ -200,7 +223,7 @@ def chat() -> None:
 
         click.echo("\n[1] Write message")
         click.echo("[2] Close chat")
-        time.sleep(0.1)
+        time.sleep(0.5)
 
 
 def choose_chat() -> None:
@@ -217,15 +240,16 @@ def choose_chat() -> None:
         return
     for nickname in chats.keys():
         click.echo(f"- {nickname}")
+
     chat_choice = click.prompt("Type nickname", type=str)
+
     if chat_choice not in chats:
         click.secho("Invalid choice", fg="red")
         return
-    
-    with LOCK:
-        current_messenger = chat_choice
-
-    chat()
+    else:    
+        with LOCK:
+            current_messenger = chat_choice
+        chat()
 
 
 
@@ -233,8 +257,6 @@ def user_options() -> None:
     """
     This function is responsible for handling user options.
     """
-    global messaging
-
     while True:
         while messaging:
             pass
@@ -263,20 +285,21 @@ def new_connection()-> None:
 
     while running:
         try:
-            c, addr = s.accept()
+            socket, addr = s.accept()
             click.echo(f"New connection from {addr}")
-            m = read_data(c)
+            m = read_data(socket)
             _, nick, addr, port = m.split()
 
+            # TODO: Implement veirfying the user's signature
+            # TODO: Implement gathering user's public key
             with LOCK:
                 chats[nick] = {
                     "messages": [],
-                    "socket": c,
+                    "socket": socket,
                     "address": addr,
                     "port": port
                 }
 
-            # Create new thread for receiving messages
             messages_receiver_thread = threading.Thread(target=messages_receiver, args=(nick,), daemon=True)
             messages_receiver_thread.start()
         except Exception as e:
@@ -287,29 +310,64 @@ def register() -> None:
     """
     This function is responsible for registering the client with the server.
     """
-    global nick
+    global nick, server_public_key, server_socket
 
-    with socks.socksocket() as server_socket:
-        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
+    connecting_spinner = halo.Halo(text="Connecting to server", spinner="dots", placement="right", color="green")
+    connecting_spinner.start()
+    server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
+    connecting_spinner.succeed(text='Connected to server successfully')
 
-        print("im here")
+    server_pbk_spinner = halo.Halo(text="Receiving server public key",  spinner="dots", placement="right", color="green")
+    server_pbk_spinner.start()
+    server_public_key = read_data(server_socket)
+    server_public_key = serialization.load_pem_public_key(server_public_key.encode())
+    server_pbk_spinner.succeed(text='Server public key received successfully')
 
-        clean_terminal()
-        with LOCK:
-            nick = click.prompt("Enter your nickname").replace(" ", "_")
-        server_socket.sendall(f"NEW {nick} {ADDRESS[:-6]} {PORT}\n".encode())
-        res = read_data(server_socket)
+    clean_terminal()
 
-        # TODO: Implement handling server responses for registration
-        if res.strip() != "registered":
-            close_app(server_response=res)
+    click.echo("Connected to server\n")
 
+    # send public key to server
+    server_socket.sendall(PUBLIC_KEY_BYTES + b"\n\n")
+    res = read_data(server_socket)
+
+    print(res)
+
+    if res == "Invalid public key":
+        close_app()
+    else:
+        click.echo("Public key sent to server\n")
+
+    with LOCK:
+        nick = click.prompt("Enter your nickname").replace(" ", "_")
+        
+    clean_terminal()
+
+    register_spinner = halo.Halo(text="Registering", spinner="dots", placement="right", color="green")
+    register_spinner.start()
+
+    register_message = encrypt(f"NEW {nick} {ADDRESS[:-6]} {PORT}", server_public_key)        
+
+    print(register_message)
+
+    server_socket.sendall(register_message + b"\n\n")
+
+    res = read_data(server_socket, return_bytes=True)
+    res_decrypted = decrypt(res, PRIVATE_KEY)
+
+    print(res_decrypted)
+
+    if res_decrypted == "User successfully registered":
+        register_spinner.succeed(text='Registered successfully')
+        return
+    else:
+        close_app(server_response=res_decrypted)
+        
 
 if __name__ == "__main__":
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             service_setup(HOST, PORT, s)
-
             register()
 
             # Create new thread for handling new connections
