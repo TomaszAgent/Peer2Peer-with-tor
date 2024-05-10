@@ -76,8 +76,10 @@ def close_app(server_response: str | None = None) -> None:
 
     # TODO: Implement decrypting the message
     if connected:
-        server_socket.sendall(f"CLOSE {nick}\n\n".encode())
-        server_socket.close()
+        with socket.socket() as server_socket:
+            server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
+            server_socket.sendall(f"CLOSE {nick}\n\n".encode())
+            server_socket.close()
 
         for connection in [chats[messenger]["socket"] for messenger in chats]:
             connection.sendall("/CHAT CLOSE\n\n".encode())
@@ -90,15 +92,16 @@ def get_users() -> list[str]:
     """
     This function is responsible for getting all users from the server.
     """
-    global server_socket
+    with socket.socket() as server_socket:
+        encrypted_message = encrypt("GET", server_public_key)
+    
+        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
+        server_socket.sendall(encrypted_message + b"\n\n")
 
-    encrypted_message = encrypt("GET", server_public_key)
-    server_socket.sendall(encrypted_message + b"\n\n")
+        res = read_data(server_socket, return_bytes=True)
+        res_decrypted = decrypt(res, PRIVATE_KEY)
 
-    res = read_data(server_socket, return_bytes=True)
-    res_decrypted = decrypt(res, PRIVATE_KEY)
-
-    return json.loads(res_decrypted)
+        return json.loads(res_decrypted)
     
 
 def start_chat() -> None:
@@ -311,63 +314,27 @@ def register() -> None:
     """
     This function is responsible for registering the client with the server.
     """
-    global nick, server_public_key, server_socket
+    global nick, server_public_key
 
-    connecting_spinner = halo.Halo(text="Connecting to server", spinner="dots", placement="right", color="green")
-    connecting_spinner.start()
-    with LOCK:
-        server_socket = socks.socksocket()
-        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
-    connecting_spinner.succeed(text='Connected to server successfully')
+    with socks.socksocket() as server_socket:
+        print("Connecting to server...")
+        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))                
 
-    server_pbk_spinner = halo.Halo(text="Receiving server public key",  spinner="dots", placement="right", color="green")
-    server_pbk_spinner.start()
-    server_public_key = read_data(server_socket)
-    server_public_key = serialization.load_pem_public_key(server_public_key.encode())
-    server_pbk_spinner.succeed(text='Server public key received successfully')
+        click.echo("Connected to server\n")
 
-    clean_terminal()
+        with LOCK:
+            nick = click.prompt("Enter your nickname").replace(" ", "_")
 
-    click.echo("Connected to server\n")
-
-    # send public key to server
-    with LOCK:
-        server_socket.sendall(PUBLIC_KEY_BYTES + b"\n\n")
-    res = read_data(server_socket)
-
-    print(res)
-
-    if res == "Invalid public key":
-        close_app()
-    else:
-        click.echo("Public key sent to server\n")
-
-    with LOCK:
-        nick = click.prompt("Enter your nickname").replace(" ", "_")
+        register_message = f"NEW {nick} {ADDRESS[:-6]} {PORT} ".encode()
+        server_socket.sendall(register_message + PUBLIC_KEY_BYTES + b"\n\n")
         
-    clean_terminal()
+        res = read_data(server_socket)
 
-    register_spinner = halo.Halo(text="Registering", spinner="dots", placement="right", color="green")
-    register_spinner.start()
+        if res == "User successfully registered":
+            return
+        else:
+            close_app(server_response=res)
 
-    register_message = encrypt(f"NEW {nick} {ADDRESS[:-6]} {PORT}", server_public_key)        
-
-    print(register_message)
-
-    with LOCK:
-        server_socket.sendall(register_message + b"\n\n")
-
-    res = read_data(server_socket, return_bytes=True)
-    res_decrypted = decrypt(res, PRIVATE_KEY)
-
-    print(res_decrypted)
-
-    if res_decrypted == "User successfully registered":
-        register_spinner.succeed(text='Registered successfully')
-        return
-    else:
-        close_app(server_response=res_decrypted)
-        
 
 if __name__ == "__main__":
     try:

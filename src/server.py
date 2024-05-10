@@ -24,70 +24,57 @@ PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
 users = {}
 
 
-def send_response(client_socket: socket.socket, response: str, key: rsa.RSAPublicKey | None = None) -> None:
+def send_response(client_socket: socket.socket, response: str) -> None:
     """
     This function is responsible for sending a response to the client.
     """
-    # ! This function can only encrypt text not longer than 190 bytes (RSA limitation)
-    # TODO: Implement sending messages in chunks to avoid this limitation (this may change the protocol)
-    if key:
-        response = encrypt(response, key)
-        print(response)
-        client_socket.sendall(response + b"\n\n")
-    else:
-        client_socket.sendall(response.encode() + b"\n\n")
+    client_socket.sendall(response.encode() + b"\n\n")
 
 
-def handle_requests(client_socket: socket.socket, message: str, user_public_key: rsa.RSAPublicKey) -> None:
+def handle_requests(client_socket: socket.socket, message: str) -> None:
     """
     This function is responsible for handling requests from the client that are not related to registering a user.
     """
+    print(message.split(maxsplit=4))
     match message.split()[0]:
         case "NEW":
-            register_user(client_socket, message, user_public_key)
-        case "GET_USERS":
-            nicks_list = users.keys()
-            send_response(client_socket, nicks_list, user_public_key)
-        case "GET_USER":
-            users_nick = message.split()[1]
-            if user := users.get(users_nick):
-                send_response(
-                    client_socket, f"{user[0]} {user[1]}", user_public_key
-                )
-            else:
-                send_response(client_socket, "User not found", user_public_key)
+            register_user(client_socket, message)
+        case "GET":
+            users_list = json.dumps(users)
+            send_response(client_socket, users_list)
         case "CLOSE":
             nick = message.split()[1]
             users.pop(nick)
             client_socket.close()
         case _:
-            send_response(client_socket, "Invalid request", user_public_key)
+            send_response(client_socket, "Invalid request")
 
     
-def register_user(client_socket: socket.socket, message: str, user_public_key: rsa.RSAPublicKey) -> None:
+def register_user(client_socket: socket.socket, message: str) -> None:
     """
     This function is responsible for registering a new user.
     """    
-    message = message.split()
+    message = message.split(maxsplit=4)
 
-    if len(message) == 4:
-        _, nick, address, port = message
+    if len(message) == 5:
+        _, nick, address, port, user_public_key = message
+        try: 
+            serialization.load_pem_public_key(user_public_key.encode())
+        except ValueError:
+            send_response(client_socket, "Public key is invalid")
 
         if not address.isalnum() or len(address) != 56:            
-            send_response(client_socket, "Address is invalid", user_public_key)
+            send_response(client_socket, "Address is invalid")
         elif address in [user[0] for user in users.values()]:
-            send_response(client_socket, "Address is taken", user_public_key)
+            send_response(client_socket, "Address is taken")
         elif nick in users.keys():
-            send_response(client_socket, "Nick is taken", user_public_key)
+            send_response(client_socket, "Nick is taken")
         else:
-            user_public_key_bytes = user_public_key.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-            users[nick] = (address, port, user_public_key_bytes.decode())
-            send_response(client_socket, "User successfully registered", user_public_key)
+            users[nick] = (address, port, user_public_key)
+            print(f"User {nick} registered with address {address} and port {port}")
+            send_response(client_socket, "User successfully registered")
             return
-    send_response(client_socket, "Invalid registration request", user_public_key)
+    send_response(client_socket, "Invalid registration request")
     return
 
 
@@ -96,33 +83,10 @@ def connection_handler(client_socket: socket.socket) -> None:
     This function is responsible for handling a connection with a client.
     """
     click.echo(f"New connection from {client_socket.getpeername()}")
-    time.sleep(1)
-    client_socket.sendall(PUBLIC_KEY_BYTES + b"\n\n")
-    click.echo(f"Public key sent to {client_socket.getpeername()}")
-
-    users_public_key = read_data(client_socket)
-
-    try:
-        users_public_key = serialization.load_pem_public_key(users_public_key.encode())
-    except ValueError:
-        print(users_public_key)
-        send_response(client_socket, "Invalid public key")
-        return
-    
-    send_response(client_socket, "Public key received")
-    click.echo(f"Public key received from {client_socket.getpeername()}")
-
+   
     while True:
-        message = read_data(client_socket, return_bytes=True)
-        click.echo(f"Received message from {client_socket.getpeername()}: {message}")
-
-        print(message)
-        try:
-            decrypted_message = decrypt(message[1:], PRIVATE_KEY)
-        except ValueError:
-            decrypted_message = decrypt(message, PRIVATE_KEY)
-
-        handle_requests(client_socket, decrypted_message, users_public_key)
+        message = read_data(client_socket)
+        handle_requests(client_socket, message)
 
 
 def user_printer() -> None:
