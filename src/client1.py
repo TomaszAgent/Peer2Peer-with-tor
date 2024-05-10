@@ -18,7 +18,7 @@ PORT = 5001
 SERVER_ADDRESS = "yhpc3gkjqemsfpc4hcnfrvciil3xqgis4ipqfgootcgigawltlunxzqd"
 ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
 server_public_key = None
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket = None
 connected = False
 messaging = False
 running = True
@@ -314,7 +314,9 @@ def register() -> None:
 
     connecting_spinner = halo.Halo(text="Connecting to server", spinner="dots", placement="right", color="green")
     connecting_spinner.start()
-    server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
+    with LOCK:
+        server_socket = socks.socksocket()
+        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
     connecting_spinner.succeed(text='Connected to server successfully')
 
     server_pbk_spinner = halo.Halo(text="Receiving server public key",  spinner="dots", placement="right", color="green")
@@ -328,7 +330,8 @@ def register() -> None:
     click.echo("Connected to server\n")
 
     # send public key to server
-    server_socket.sendall(PUBLIC_KEY_BYTES + b"\n\n")
+    with LOCK:
+        server_socket.sendall(PUBLIC_KEY_BYTES + b"\n\n")
     res = read_data(server_socket)
 
     print(res)
@@ -350,7 +353,8 @@ def register() -> None:
 
     print(register_message)
 
-    server_socket.sendall(register_message + b"\n\n")
+    with LOCK:
+        server_socket.sendall(register_message + b"\n\n")
 
     res = read_data(server_socket, return_bytes=True)
     res_decrypted = decrypt(res, PRIVATE_KEY)
