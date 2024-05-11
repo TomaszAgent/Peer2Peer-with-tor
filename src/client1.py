@@ -13,20 +13,13 @@ from shared import *
 
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
+
+# Config
 HOST = "127.0.0.1"
 PORT = 5001
 SERVER_ADDRESS = "yhpc3gkjqemsfpc4hcnfrvciil3xqgis4ipqfgootcgigawltlunxzqd"
-ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()
-server_public_key = None
-connected = False
-messaging = False
-running = True
-nick = None
-current_messenger = None
-chats = {}
-
-# Locks
-LOCK = threading.Lock()
+SERVER_INFO = (f"{SERVER_ADDRESS}.onion", 5050)
+ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()[:-6]
 
 PRIVATE_KEY, PUBLIC_KEY = rsa_keypair()
 PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
@@ -34,6 +27,30 @@ PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
     format=serialization.PublicFormat.SubjectPublicKeyInfo
 )
 
+# Global variables
+connected = False
+messaging = False
+chatting = False
+running = True
+nick = None
+current_messenger = None
+chats = {}
+
+LOCK = threading.Lock()
+
+def close_chat(socket, messenger: str) -> None:
+    """
+    This function is responsible for closing a chat.
+    """
+    global chats, chatting
+
+    with LOCK:
+        chats[messenger]["manage"]["running"] = False
+        chats[messenger]["manage"]["thread"].join()
+        encrypted_message = encrypt("/CHAT CLOSE", chats[messenger]["info"]["public_key"])
+        socket.sendall(encrypted_message + b"\n\n")
+        chats.pop(messenger)
+        chatting = False
 
 # Application functions
 
@@ -46,23 +63,21 @@ def close_app(server_response: str | None = None) -> None:
     with LOCK:
         running = False
 
-    if server_response is not None:
+    if server_response:
         click.echo(f"Server response: {server_response.strip()}")
         click.secho("There was an error while registering. Exiting application.", fg="red")
         quit()
     
     click.echo("Exiting application")
 
-    # TODO: Implement decrypting the message
     if connected:
-        with socks.socksocket() as server_socket:
-            server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
-            server_socket.sendall(f"CLOSE {nick}\n\n".encode())
-            server_socket.close()
+        server_socket = socks.socksocket()
+        server_socket.connect(SERVER_INFO)
+        server_socket.sendall(f"CLOSE {nick}\n\n".encode())
+        server_socket.close()
 
-        for connection in [chats[messenger]["info"]["socket"] for messenger in chats]:
-            connection.sendall("/CHAT CLOSE\n\n".encode())
-            connection.close()
+        for messenger in chats:
+            close_chat(chats[messenger]["info"]["socket"], messenger)
 
     quit()
 
@@ -75,7 +90,7 @@ def get_users() -> dict[str]:
     """
     click.echo("Loading users...")
     with socks.socksocket() as server_socket: 
-        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
+        server_socket.connect(SERVER_INFO)
         server_socket.sendall("GET".encode() + b"\n\n")
 
         res = read_data(server_socket)
@@ -89,6 +104,8 @@ def messages_receiver(messenger: str):
     """
     This function is responsible for receiving messages from the server and other clients.
     """  
+    global chatting, chats
+
     while chats[messenger]["manage"]["running"]:
         messenger_socket = chats[messenger]["info"]["socket"]
 
@@ -96,10 +113,14 @@ def messages_receiver(messenger: str):
         decrypted_message = decrypt(encrypted_message, PRIVATE_KEY)
 
         if decrypted_message == "/CHAT CLOSE":
-            # TODO: If user is in chat with that user move user to main menu (AKA choose_option)
-            messenger_socket.close()
+            if chatting:
+                chatting = False
+                click.echo(f"{messenger} has left the chat")
+
+            # * There is no need to join thread or change running status, because we are already in the thread and we can just return
             with LOCK:
                 chats.pop(messenger)
+                messenger_socket.close()
             return
 
         with LOCK:
@@ -138,7 +159,8 @@ def start_chat() -> None:
     socket_connection.connect((f"{messenger_addr}.onion", int(messenger_port)))    
     
     signature = sign(nick.encode(), PRIVATE_KEY)
-    encryped_message = encrypt(f"NEW {nick} {ADDRESS[:-6]} {PORT}", messenger_public_key)
+
+    encryped_message = encrypt(f"NEW {nick} {ADDRESS} {PORT}", messenger_public_key)
     
     socket_connection.sendall(PUBLIC_KEY_BYTES + b"\n\n")
     time.sleep(0.5)
@@ -181,21 +203,6 @@ def start_chat() -> None:
     chat()
 
 
-def close_chat(socket) -> None:
-    """
-    This function is responsible for closing a chat.
-    """
-    global current_messenger, chats
-
-    with LOCK:
-        chats[current_messenger]["manage"]["running"] = False
-        chats[current_messenger]["manage"]["thread"].join()
-        encrypted_message = encrypt("/CHAT CLOSE", chats[current_messenger]["info"]["public_key"])
-        socket.sendall(encrypted_message + b"\n\n")
-        chats.pop(current_messenger)
-        current_messenger = None
-
-
 def write_message() -> None:
     """
     This function is responsible for writing a message to a chat.
@@ -211,7 +218,7 @@ def write_message() -> None:
     socket = chats[current_messenger]["info"]["socket"]
 
     if message == "/CHAT CLOSE":
-        close_chat(socket)
+        close_chat(socket, current_messenger)
     else:
         with LOCK:
             chats[current_messenger]["messages"].append(f'{nick}: {message}')
@@ -231,7 +238,12 @@ def chat_options() -> None:
     """
     global current_messenger
 
-    match click.getchar():
+    user_choice = click.getchar()
+
+    if not chatting:
+        return
+
+    match user_choice:
         case "1":
             write_message()
         case "2":
@@ -240,16 +252,22 @@ def chat_options() -> None:
 
 
 def chat() -> None:
+    global chatting
+
+    with LOCK:
+        chatting = True
+
     chat_options_thread = threading.Thread(target=chat_options, daemon=True)
     chat_options_thread.start()
-    while current_messenger and not messaging:
+    while current_messenger and not messaging and chatting:
         clean_terminal()
         click.echo(f"Chatting with {current_messenger}\n")
         print(*chats[current_messenger]["messages"], sep="\n")
 
         click.echo("\n[1] Write message")
         click.echo("[2] Close chat")
-        time.sleep(0.5)
+        time.sleep(1)
+
 
 
 def choose_chat() -> None:
@@ -314,9 +332,9 @@ def new_connection()-> None:
         try:
             socket, addr = s.accept()
             click.echo(f"New connection from {addr}")
-            messanger_public_key = read_data(socket)
+            messenger_public_key = read_data(socket)
 
-            messanger_public_key = serialization.load_pem_public_key(messanger_public_key.encode())
+            messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
 
             signature = read_data(socket)
 
@@ -331,7 +349,7 @@ def new_connection()-> None:
             
             request, nick, addr, port = decrypted_message.split()
             
-            if not verify(nick.encode(), signature, messanger_public_key):
+            if not verify(nick.encode(), signature, messenger_public_key):
                 socket.sendall("Invalid signature\n\n".encode())
                 socket.close()
                 continue
@@ -356,7 +374,7 @@ def new_connection()-> None:
                         "socket": socket,
                         "address": addr,
                         "port": port,
-                        "public_key": messanger_public_key,
+                        "public_key": messenger_public_key,
                     },
                     "manage": {
                         "running": True,
@@ -373,23 +391,25 @@ def register() -> None:
     """
     This function is responsible for registering the client with the server.
     """
-    global nick, server_public_key
+    global nick, connected
 
     with socks.socksocket() as server_socket:
         print("Connecting to server...")
-        server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))                
+        server_socket.connect(SERVER_INFO)                
 
         click.echo("Connected to server\n")
 
         with LOCK:
             nick = click.prompt("Enter your nickname").replace(" ", "_")
 
-        register_message = f"NEW {nick} {ADDRESS[:-6]} {PORT} ".encode()
+        register_message = f"NEW {nick} {ADDRESS} {PORT} ".encode()
         server_socket.sendall(register_message + PUBLIC_KEY_BYTES + b"\n\n")
         
         res = read_data(server_socket)
 
         if res == "User successfully registered":
+            with LOCK:
+                connected = True
             return
         else:
             close_app(server_response=res)
