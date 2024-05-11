@@ -6,20 +6,20 @@ import threading
 import sys
 
 import click
-import halo
 import socks
+from halo import Halo
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
-from shared import *
+from _config import HOST, PORT, SERVER_INFO
+from helpers import clean_terminal, get_users, select_user
+from security import rsa_keypair, encrypt, decrypt, sign, verify
+from connection import read_data, service_setup
+
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
 
-# Config
-HOST = "127.0.0.1"
-PORT = 5025
-SERVER_ADDRESS = "eyp6hesvb3y3gue2iwztuw2o4japnrfmmxonpleaafzfzxgskmq3dlid"
-SERVER_INFO = (f"{SERVER_ADDRESS}.onion", 5050)
-ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/clients/client1/hostname", "r").read().strip()[:-6]
+ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/hostname", "r").read().strip()[:-6]
 
 PRIVATE_KEY, PUBLIC_KEY = rsa_keypair()
 PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
@@ -27,7 +27,6 @@ PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
     format=serialization.PublicFormat.SubjectPublicKeyInfo
 )
 
-# Global variables
 connected = False
 messaging = False
 chatting = False
@@ -81,24 +80,6 @@ def close_app(server_response: str | None = None) -> None:
     sys.exit()
 
 
-# Server functions
-
-def get_users() -> dict[str]:
-    """
-    This function is responsible for getting all users from the server.
-    """
-    click.echo("Loading users...")
-    with socks.socksocket() as server_socket:
-        server_socket.connect(SERVER_INFO)
-        server_socket.sendall("GET".encode() + b"\n\n")
-
-        res = read_data(server_socket)
-
-        return json.loads(res)
-
-
-# Chat functions
-
 def messages_receiver(messenger: str):
     """
     This function is responsible for receiving messages from the server and other clients.
@@ -116,9 +97,8 @@ def messages_receiver(messenger: str):
                 chatting = False
                 click.echo(f"{messenger} has left the chat")
 
-            # * There is no need to join thread or change running status, because we are already in the thread and we can just return
             with LOCK:
-                encrypted_message = encrypt(f"/CHAT CLOSE2", chats[messenger]["info"]["public_key"])
+                encrypted_message = encrypt("/CHAT CLOSE2", chats[messenger]["info"]["public_key"])
                 messenger_socket.sendall(encrypted_message + b"\n\n")
                 chats.pop(messenger)
                 messenger_socket.close()
@@ -129,7 +109,6 @@ def messages_receiver(messenger: str):
                 chatting = False
                 click.echo(f"{messenger} has left the chat")
 
-            # * There is no need to join thread or change running status, because we are already in the thread and we can just return
             with LOCK:
                 chats.pop(messenger)
                 messenger_socket.close()
@@ -139,6 +118,34 @@ def messages_receiver(messenger: str):
             chats[messenger]["messages"].append(f"{messenger}: {decrypted_message}")
 
 
+@Halo(text="Connecting to user", spinner="dots")
+def connect_to_user(addr: str, port: int, user_public_key: rsa.RSAPublicKey) -> socket.socket | None:
+    """
+    Connect to the selected user and establish secure connection.
+    """
+    socket_conn = socks.socksocket()
+    socket_conn.connect((f"{addr}.onion", port))
+
+    signature = sign(nick.encode(), PRIVATE_KEY)
+
+    encryped_message = encrypt(f"NEW {nick} {ADDRESS} {PORT}", user_public_key)
+
+    socket_conn.sendall(PUBLIC_KEY_BYTES + b"\n\n")
+    time.sleep(0.5)
+    socket_conn.sendall(signature + b"\n\n")
+    time.sleep(0.5)
+    socket_conn.sendall(encryped_message + b"\n\n")
+
+    response = read_data(socket_conn)
+
+    if response != "Connection Accepted":
+        click.echo(response)
+        click.echo("Connection refused")
+        socket_conn.close()
+        return
+    return socket_conn
+
+
 def start_chat() -> None:
     """
     This function is responsible for starting a chat with another user.
@@ -146,55 +153,36 @@ def start_chat() -> None:
     global current_messenger
 
     clean_terminal()
-    users = get_users()
+    users = get_users(SERVER_INFO)
+
+    if not users:
+        click.echo("No users available")
+        return
+    
     clean_terminal()
     click.echo("Select a user to start chat with")
 
     users.pop(nick)
-    for user in users:
-        click.echo(f"- {user}")
-
-    chosen_user_nick = click.prompt("Type nickname", type=str)
-
-    if chosen_user_nick not in users:
-        clean_terminal()
-        click.secho("Invalid choice", fg="red")
+    chosen_user_nick = select_user(users)
+    if not chosen_user_nick:
         return
-
+    
     clean_terminal()
 
     messenger_addr, messenger_port, messenger_public_key = users[chosen_user_nick]
     messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
 
-    click.echo(f"Connecting to {messenger_addr} on port {messenger_port}...")
-    socket_connection = socks.socksocket()
-    socket_connection.connect((f"{messenger_addr}.onion", int(messenger_port)))
-
-    signature = sign(nick.encode(), PRIVATE_KEY)
-
-    encryped_message = encrypt(f"NEW {nick} {ADDRESS} {PORT}", messenger_public_key)
-
-    socket_connection.sendall(PUBLIC_KEY_BYTES + b"\n\n")
-    time.sleep(0.5)
-    socket_connection.sendall(signature + b"\n\n")
-    time.sleep(0.5)
-    socket_connection.sendall(encryped_message + b"\n\n")
-
-    response = read_data(socket_connection)
-
-    if response != "Connection Accepted":
-        click.echo(response)
-        click.echo("Connection refused")
-        socket_connection.close()
+    socket_conn = connect_to_user(messenger_addr, int(messenger_port), messenger_public_key)
+    if not socket_conn:
         return
-
+    
     messages_receiver_thread = threading.Thread(target=messages_receiver, args=(chosen_user_nick,), daemon=True)
 
     with LOCK:
         chats[chosen_user_nick] = {
             "messages": [],
             "info": {
-                "socket": socket_connection,
+                "socket": socket_conn,
                 "address": messenger_addr,
                 "port": messenger_port,
                 "public_key": messenger_public_key
@@ -229,14 +217,12 @@ def write_message() -> None:
     message = click.prompt("Write message")
     socket = chats[current_messenger]["info"]["socket"]
 
-    if message == "/CHAT CLOSE":
-        close_chat(socket, current_messenger)
-    else:
-        with LOCK:
-            chats[current_messenger]["messages"].append(f'{nick}: {message}')
 
-        encrypted_message = encrypt(message, chats[current_messenger]["info"]["public_key"])
-        socket.sendall(encrypted_message + b"\n\n")
+    with LOCK:
+        chats[current_messenger]["messages"].append(f'{nick}: {message}')
+
+    encrypted_message = encrypt(message, chats[current_messenger]["info"]["public_key"])
+    socket.sendall(encrypted_message + b"\n\n")
 
     with LOCK:
         messaging = False
@@ -252,13 +238,27 @@ def chat_options() -> None:
 
     user_choice = click.getchar()
 
-    if not chatting:
+    if not chatting or messaging:
         return
 
     match user_choice:
         case "1":
+            clean_terminal()
             write_message()
         case "2":
+            messenger = current_messenger
+            with LOCK:
+                current_messenger = None
+                chatting = False
+            clean_terminal()
+            
+            closing_spinner = Halo(text="Closing chat", spinner="dots", placement="right")
+            closing_spinner.start()
+            close_chat(chats[messenger]["info"]["socket"], messenger)
+            closing_spinner.stop_and_persist(text="Chat closed")
+
+        case "3":
+            clean_terminal()
             with LOCK:
                 current_messenger = None
                 chatting = False
@@ -279,6 +279,7 @@ def chat() -> None:
 
         click.echo("\n[1] Write message")
         click.echo("[2] Close chat")
+        click.echo("[3] Go back to main menu\n")
         time.sleep(1)
 
 
@@ -311,10 +312,12 @@ def choose_chat() -> None:
 def user_options() -> None:
     """
     This function is responsible for handling user options.
-    """
+    """  
     while True:
         while messaging:
             pass
+
+        clean_terminal()
 
         options = {
             '1': ('Start a chat', start_chat),
@@ -322,10 +325,15 @@ def user_options() -> None:
             '3': ('Quit', close_app),
         }
 
+        click.echo("Select an option")
+
         for key, (message, _) in options.items():
             click.echo(f'[{key}] {message}')
 
         user_choice = click.getchar()
+
+        if chatting or messaging:
+            continue
 
         if user_choice in options:
             _, action = options[user_choice]
@@ -406,18 +414,21 @@ def register() -> None:
     global nick, connected
 
     with socks.socksocket() as server_socket:
-        print("Connecting to server...")
+        connecting_spinner = Halo(text="Connecting to server", spinner="dots", placement="right")
+        connecting_spinner.start()
         server_socket.connect(SERVER_INFO)
-
-        click.echo("Connected to server\n")
+        connecting_spinner.stop_and_persist(text="Connected to server")
 
         with LOCK:
             nick = click.prompt("Enter your nickname").replace(" ", "_")
 
+        register_spinner = Halo(text="Registering", spinner="dots", placement="right")
+        register_spinner.start()
         register_message = f"NEW {nick} {ADDRESS} {PORT} ".encode()
         server_socket.sendall(register_message + PUBLIC_KEY_BYTES + b"\n\n")
 
         res = read_data(server_socket)
+        register_spinner.stop_and_persist(text="Successfully registered")
 
         if res == "User successfully registered":
             with LOCK:
