@@ -34,7 +34,7 @@ def rsa_keypair() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
     return (private_key, private_key.public_key())
 
 
-def sign(message, private_key) -> bytes:
+def sign(message: bytes, private_key: rsa.RSAPrivateKey) -> bytes:
     """
     This function signs a message using the private key.
     """
@@ -42,7 +42,7 @@ def sign(message, private_key) -> bytes:
     return base64.b64encode(private_key.sign(message, padding_instance, hashes.SHA256()))
 
 
-def verify(message, signature, public_key) -> bool:
+def verify(message: bytes, signature: str, public_key: rsa.RSAPublicKey) -> bool:
     """
     This function verifies a signature using the public key.
     """
