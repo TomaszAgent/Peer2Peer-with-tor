@@ -74,7 +74,7 @@ def close_app(server_response: str | None = None) -> None:
 
     # TODO: Implement decrypting the message
     if connected:
-        with socket.socket() as server_socket:
+        with socks.socksocket() as server_socket:
             server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
             server_socket.sendall(f"CLOSE {nick}\n\n".encode())
             server_socket.close()
@@ -86,27 +86,24 @@ def close_app(server_response: str | None = None) -> None:
     quit()
 
 
-def get_users() -> list[str]:
+def get_users() -> dict[str]:
     """
     This function is responsible for getting all users from the server.
     """
-    with socket.socket() as server_socket:
-        encrypted_message = encrypt("GET", server_public_key)
-    
+    with socks.socksocket() as server_socket:   
         server_socket.connect((f"{SERVER_ADDRESS}.onion", 5050))
-        server_socket.sendall(encrypted_message + b"\n\n")
+        server_socket.sendall("GET".encode() + b"\n\n")
 
-        res = read_data(server_socket, return_bytes=True)
-        res_decrypted = decrypt(res, PRIVATE_KEY)
+        res = read_data(server_socket)
 
-        return json.loads(res_decrypted)
+        return json.loads(res)
     
-
+    
 def start_chat() -> None:
     """
     This function is responsible for starting a chat with another user.
     """
-    global current_messenger, server_socket
+    global current_messenger
 
     clean_terminal()
     click.echo("Loading users...")
@@ -125,28 +122,30 @@ def start_chat() -> None:
         click.secho("Invalid choice", fg="red")
         return
 
-    # chosen_user = users[chosen_user_nick]
-    # Request for the user's address and port and public key
-    messenger_data = read_data(server_socket, return_bytes=True)
-    messenger_data = decrypt(messenger_data, PRIVATE_KEY)
-    messenger_addr, messenger_port = messenger_data.split()
-
-    print(messenger_addr, messenger_port)
-
-    messenger_public_key = read_data(server_socket)
-    messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
-
-    print(messenger_public_key)
-
     clean_terminal()
 
-    socket_connection = socks.socksocket()
+    messenger_addr, messenger_port, messenger_public_key = users[chosen_user_nick]
+
+
+    messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
+
+
     click.echo(f"Connecting to {messenger_addr} on port {messenger_port}...")
-    socket_connection.connect((f"{messenger_addr}.onion", int(messenger_port)))
-    
+    socket_connection = socks.socksocket()
+    socket_connection.connect((f"{messenger_addr}.onion", int(messenger_port)))    
+
     # TODO: Implement encrypting the message using the server's public key
     # TODO: Add signature to the message
-    socket_connection.sendall(f"NEW {nick} {ADDRESS[:-6]} {PORT}\n".encode())
+    
+    signature = sign(nick.encode(), PRIVATE_KEY)
+    encryped_message = encrypt(f"NEW {nick} {ADDRESS[:-6]} {PORT}", messenger_public_key)
+    
+    
+    socket_connection.sendall(PUBLIC_KEY_BYTES + b"\n\n")
+    time.sleep(0.5)
+    socket_connection.sendall(signature + b"\n\n")
+    time.sleep(0.5)
+    socket_connection.sendall(encryped_message + b"\n\n")
 
     with LOCK:
         # TODO: Implement saving messenger's public key
@@ -154,7 +153,8 @@ def start_chat() -> None:
             "messages": [],
             "socket": socket_connection,
             "address": messenger_addr,
-            "port": messenger_port
+            "port": messenger_port,
+            "public_key": messenger_public_key
         }
 
     # Create new thread for receiving messages
@@ -262,7 +262,7 @@ def user_options() -> None:
     while True:
         while messaging:
             pass
-        clean_terminal()
+        # clean_terminal()
         click.echo("What do you want to do?")
         click.echo("[1] Start a chat")
         click.echo("[2] Your chats")
@@ -289,17 +289,44 @@ def new_connection()-> None:
         try:
             socket, addr = s.accept()
             click.echo(f"New connection from {addr}")
-            m = read_data(socket)
-            _, nick, addr, port = m.split()
+            messanger_public_key = read_data(socket)
 
-            # TODO: Implement veirfying the user's signature
-            # TODO: Implement gathering user's public key
+            messanger_public_key =  serialization.load_pem_public_key(messanger_public_key.encode())
+
+            signature = read_data(socket)
+
+            encrypted_message = read_data(socket, return_bytes=True)
+            decrypted_message = decrypt(encrypted_message, messanger_public_key)
+
+            if not verify(decrypted_message.encode(), signature, messanger_public_key):
+                socket.sendall("Invalid signature".encode())
+                socket.close()
+                continue
+
+            request, nick, addr, port = decrypted_message.split()
+
+            if request != "NEW":
+                socket.sendall("Invalid request".encode())
+                socket.close()
+                continue
+
+            # TODO: Add verification of the other data
+            if not addr.isalnum() or len(addr) != 56:
+                socket.sendall("Address is invalid".encode())
+                socket.close()
+                continue
+            elif nick in chats:
+                socket.sendall("There's already open chat".encode())
+                socket.close()
+                continue
+            
             with LOCK:
                 chats[nick] = {
                     "messages": [],
                     "socket": socket,
                     "address": addr,
-                    "port": port
+                    "port": port,
+                    "public_key": messanger_public_key
                 }
 
             messages_receiver_thread = threading.Thread(target=messages_receiver, args=(nick,), daemon=True)
