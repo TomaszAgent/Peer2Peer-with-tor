@@ -34,9 +34,15 @@ To install the client you need to follow the [general instructions](https://gith
 
 ## Server Connection
 
-When a client initiates a connection to the server via WebSocket, it undergoes a registration process. Initially, the client transmits its hidden service address and chosen unique nickname to the server for storage. Additionally, the client sends its public key to the server, facilitating encryption of messages by other peers or verification of the client's signature.
+When a client establishes a connection to the server via WebSocket, it initiates a registration process to facilitate secure communication within the network. This process involves the client transmitting essential information to the server for storage and authentication purposes.
 
-This process ensures that the server has the necessary information to facilitate secure communication between peers, while also allowing for identification and authentication within the network.
+1. Hidden Service Address and Unique Nickname: Upon connection establishment, the client sends its hidden service address along with a chosen unique nickname to the server. This information is stored by the server to facilitate identification of the client within the network.
+
+2. Public Key Transmission: In addition to the address and nickname, the client also sends its public key to the server. This key serves multiple purposes:
+    - Encryption: Other peers can utilize this public key to encrypt messages intended for the client, ensuring secure communication.
+    - Signature Verification: The server can use the public key to verify the authenticity of messages signed by the client, enhancing network security.
+
+By collecting and storing this information during the registration process, the server ensures that it possesses the necessary data to enable secure and authenticated communication between peers within the network.
 
 ### Functions related to the server connection
 
@@ -46,11 +52,17 @@ This process ensures that the server has the necessary information to facilitate
 
 ## Peer Connection
 
-After the client has registered with the server, it can connect to other peers. The client can send messages to other peers, and receive messages from them. The client can also create new chats with other peers.
+Following registration with the server, the client gains the ability to establish connections with other peers within the network. This enables the exchange of messages and the creation of new chats between clients.
+Connection Process
 
-The connection between peers starts with the client sending his public key, signature, and basic information (nick, hidden service address, port) to the peer. The peer can verify the signature and accepts or denies the connection.
+1. Client Initiation: The client initiates the connection by sending essential information to the peer. This includes:
+    - Public Key: Ensures secure communication by encrypting messages.
+    - Signature: Used for identity verification, ensuring the authenticity of the client.
+    - Basic Information: Includes the client's nickname, hidden service address, and port for identification purposes.
 
-After the connection is established, the client can send messages to the peer. The messages are encrypted with the peer's public key.
+2. Verification: Upon receiving the client's information, the peer verifies the provided signature to confirm the client's identity. Based on this verification, the peer decides whether to accept or deny the connection request.
+
+3. Established Connection: If the connection is accepted, the client can begin exchanging messages with the peer. Messages sent from the client to the peer are encrypted using the peer's public key, ensuring confidentiality and security during transmission.\
 
 ### Functions related to the peer connection
 `client.py` `connect_to_user()` - sending connection request to the peer
