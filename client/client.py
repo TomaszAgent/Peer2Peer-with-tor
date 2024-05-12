@@ -464,8 +464,7 @@ def main():
 
     user_options()
 
-
-if __name__ == "__main__":
+def run():
     try:
         main()
     except KeyboardInterrupt:
@@ -473,3 +472,7 @@ if __name__ == "__main__":
     except Exception as e:
         click.secho(e, fg="red")
         close_app()
+
+
+if __name__ == "__main__":
+    run()
