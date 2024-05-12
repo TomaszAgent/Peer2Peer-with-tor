@@ -1,8 +1,10 @@
+import sys
 import json
 import socket
 import time
 from _thread import start_new_thread
 
+import click
 from cryptography.hazmat.primitives import serialization
 
 from config import load_config
@@ -12,6 +14,8 @@ from helpers import clean_terminal
 
 users = {}
 HOST, PORT = load_config()
+print(HOST, PORT)
+
 
 def handle_requests(client_socket: socket.socket, message: str) -> None:
     """
@@ -53,7 +57,6 @@ def register_user(client_socket: socket.socket, message: str) -> None:
             send_response(client_socket, "Nick is taken")
         else:
             users[nick] = (address, port, user_public_key)
-            # print(f"User {nick} registered with address {address} and port {port}")
             send_response(client_socket, "User successfully registered")
             return
     send_response(client_socket, "Invalid registration request")
@@ -87,12 +90,33 @@ def main():
 
     It starts a new thread to print the users connected to the server and then listens for incoming connections.
     """
+    if not all([HOST, PORT]):
+        click.secho("[Configuration error] Missing variables in config", fg="red")
+        click.echo("Click any key to close app")
+        if click.getchar():
+            sys.exit()
+
     start_new_thread(user_printer, ())
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         service_setup(HOST, PORT, server_socket)
         while True:
             client, _ = server_socket.accept()
             start_new_thread(connection_handler, (client,))
+
+
+def run():
+    try:
+        main()
+    except KeyboardInterrupt:
+        click.echo("Shutting down server")
+        click.echo("Click any key to close")
+        if click.getchar():
+            sys.exit()
+    except Exception as e:
+        click.secho(f"[Unexpected error] {e}", fg="red")
+        click.echo("Click any key to close")
+        if click.getchar():
+            sys.exit()
 
 
 if __name__ == "__main__":

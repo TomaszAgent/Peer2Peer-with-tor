@@ -447,7 +447,7 @@ def main():
 
     This function initializes the socket, sets up the service with the specified host and port, registers the client, starts a new connection thread, and handles user options.
     """
-    if not all([HOST, PORT, SERVER_INFO]):
+    if not all([HOST, PORT, all(SERVER_INFO)]):
         click.secho("[Configuration error] Missing variables in config", fg="red")
         click.echo("Click any key to close app")
         if click.getchar():
