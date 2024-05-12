@@ -1,11 +1,12 @@
-import socket
+from socket import socket
 
+from halo import Halo
 from stem.control import Controller
 
-from _config import HOST, PORT, HIDDEN_SERVICE_PATH
+from config import load_hidden_services
 
 
-def read_data(client_socket: socket.socket, return_bytes = False) -> str | bytes:
+def read_data(client_socket: socket, return_bytes = False) -> str | bytes:
     """
     This function reads data from a socket until it finds the '\n\n' delimiter, indicating the end of a message. It returns the received data as a string or bytes, depending on the specified return_bytes flag.
     """
@@ -16,25 +17,14 @@ def read_data(client_socket: socket.socket, return_bytes = False) -> str | bytes
     return data.replace(b'\n\n', b'') if return_bytes else data.decode().strip()
 
 
-def service_setup(host: str, post: int, socket: socket.socket) -> None:
+def service_setup(host: str, post: int, socket: socket) -> None:
     """
     This function sets up the hidden service
     """
     socket.bind((host, post))
     socket.listen(5)
+
+    hidden_services = load_hidden_services()
     controller = Controller.from_port(address="127.0.0.1", port=9151)
     controller.authenticate()
-    controller.set_options(
-        [
-            ("HiddenServiceDir", HIDDEN_SERVICE_PATH),
-            ("HiddenServicePort", f"{PORT} {HOST}:{PORT}"),
-            # If you want to add more hidden services, you can do so by adding more HiddenServiceDir and HiddenServicePort options.
-            # Rememver to write all hidden services
-            # ("HiddenServiceDir", "path/to/hidden_service_directory"),
-            # ("HiddenServicePort", "port host:port"),
-
-            # # Server
-            # ("HiddenServiceDir", f"{_PROJECT_PATH}/src/hidden_services/server"),
-            # ("HiddenServicePort", "5050 127.0.0.1:5050"),
-        ]
-    )
+    controller.set_options(hidden_services)

@@ -36,9 +36,9 @@ def get_users(server_info: tuple[str, int]) -> dict[str]:
         server_socket.connect(server_info)
         server_socket.sendall("GET".encode() + b"\n\n")
 
-        res = read_data(server_socket)
+        server_res = read_data(server_socket)
         
-        return json.loads(res)
+        return json.loads(server_res)
     
 
 def select_user(users: dict) -> str | None:

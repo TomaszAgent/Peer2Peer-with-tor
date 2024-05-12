@@ -1,7 +1,7 @@
 import socket
+import sys
 import time
 import threading
-import sys
 
 import click
 import socks
@@ -9,10 +9,10 @@ from halo import Halo
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from _config import HOST, PORT, SERVER_INFO, HIDDEN_SERVICE_ADDRESS
+from config import load_config
+from connection import read_data, service_setup
 from helpers import clean_terminal, get_users, select_user, display_chat
 from security import rsa_keypair, encrypt, decrypt, sign, verify
-from connection import read_data, service_setup
 
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
@@ -22,6 +22,8 @@ PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
     encoding=serialization.Encoding.PEM,
     format=serialization.PublicFormat.SubjectPublicKeyInfo
 )
+
+SERVER_INFO, ADDRESS, HOST, PORT = load_config()
 
 connected = False
 messaging = False
@@ -47,7 +49,7 @@ def close_chat(socket, messenger: str) -> None:
     chats[messenger]["manage"]["thread"].join()
 
 
-def close_app(server_response: str | None = None) -> None:
+def close_app(server_response: str | None = None, force_close: bool = False) -> None:
     """
     This function is responsible for safely closing the application.
     """
@@ -57,7 +59,7 @@ def close_app(server_response: str | None = None) -> None:
         running = False
 
     if server_response:
-        click.echo(f"Server response: {server_response.strip()}")
+        click.secho(f"Server response: {server_response.strip()}", fg="red")
         click.secho("There was an error while registering. Exiting application.", fg="red")
 
     click.echo("Exiting application")
@@ -71,6 +73,9 @@ def close_app(server_response: str | None = None) -> None:
         for messenger in list(chats):
             close_chat(chats[messenger]["info"]["socket"], messenger)
 
+    if not force_close:
+        click.echo("Click any key to close app")
+        click.getchar()
     sys.exit()
 
 
@@ -123,7 +128,7 @@ def connect_to_user(addr: str, port: int, user_public_key: rsa.RSAPublicKey) -> 
 
     signature = sign(nick.encode(), PRIVATE_KEY)
 
-    encryped_message = encrypt(f"NEW {nick} {HIDDEN_SERVICE_ADDRESS} {PORT}", user_public_key)
+    encryped_message = encrypt(f"NEW {nick} {ADDRESS} {PORT}", user_public_key)
 
     socket_conn.sendall(PUBLIC_KEY_BYTES + b"\n\n")
     time.sleep(0.5)
@@ -313,14 +318,14 @@ def user_options() -> None:
         clean_terminal()
 
         options = {
-            '1': ('Start a chat', start_chat),
-            '2': ('Your chats', choose_chat),
-            '3': ('Quit', close_app),
+            '1': ('Start a chat', start_chat, ()),
+            '2': ('Your chats', choose_chat, ()),
+            '3': ('Quit', close_app, (None, True)),
         }
 
         click.echo("Select an option")
 
-        for key, (message, _) in options.items():
+        for key, (message, _, _) in options.items():
             click.echo(f'[{key}] {message}')
 
         user_choice = click.getchar()
@@ -329,20 +334,24 @@ def user_options() -> None:
             continue
 
         if user_choice in options:
-            _, action = options[user_choice]
-            action()
+            _, action, args = options[user_choice]
+            
+            if args:
+                action(*args)
+            else: 
+                action()
         else:
             click.echo("Invalid choice")
 
 
-def new_connection(s) -> None:
+def new_connection(socket_: socket.socket) -> None:
     """
     This function is responsible for handling new connections.
     """
     global running
 
     while running:
-        socket, addr = s.accept()
+        socket, addr = socket_.accept()
         click.echo(f"New connection from {addr}")
         messenger_public_key = read_data(socket)
 
@@ -403,17 +412,19 @@ def register() -> None:
     global nick, connected
 
     with socks.socksocket() as server_socket:
-        connecting_spinner = Halo(text="Connecting to server", spinner="dots", placement="right")
+        connecting_spinner = Halo(text="Connecting to server", spinner="dots4", placement="right", color="green")
         connecting_spinner.start()
         server_socket.connect(SERVER_INFO)
-        connecting_spinner.stop_and_persist(text="Connected to server")
+        connecting_spinner.succeed("Server connected")
 
         with LOCK:
             nick = click.prompt("Enter your nickname").replace(" ", "_")
 
+        clean_terminal()
+
         register_spinner = Halo(text="Registering", spinner="dots", placement="right")
         register_spinner.start()
-        register_message = f"NEW {nick} {HIDDEN_SERVICE_ADDRESS} {PORT} ".encode()
+        register_message = f"NEW {nick} {ADDRESS} {PORT} ".encode()
         server_socket.sendall(register_message + PUBLIC_KEY_BYTES + b"\n\n")
 
         res = read_data(server_socket)
@@ -433,26 +444,32 @@ def main():
 
     This function initializes the socket, sets up the service with the specified host and port, registers the client, starts a new connection thread, and handles user options.
     """
-    if not any([HOST, PORT, SERVER_INFO, HIDDEN_SERVICE_ADDRESS]):
+    if not all([HOST, PORT, SERVER_INFO, ADDRESS]):
         click.secho("Missing variables in config", fg="red")
-        sys.exit()
+        click.echo("Click any key to close app")
+        if click.getchar():
+            sys.exit()
 
-    socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    socket_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+    setup_spinner = Halo(text="Setting up service", spinner="dots4", placement="right", color="green")
+    setup_spinner.start()
+    service_setup(HOST, PORT, socket_)
+    setup_spinner.succeed("Service set up")
 
-    service_setup(HOST, PORT, socket)
     register()
 
-    new_connection_thread = threading.Thread(target=new_connection, args=(socket,), daemon=True)
+    new_connection_thread = threading.Thread(target=new_connection, args=(socket_,), daemon=True)
     new_connection_thread.start()
 
     user_options()
 
 
-if __name__ == "_`_main__":
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         close_app()
     except Exception as e:
-        print(e)
+        click.secho(e, fg="red")
         close_app()
