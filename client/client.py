@@ -59,8 +59,7 @@ def close_app(server_response: str | None = None, force_close: bool = False) -> 
         running = False
 
     if server_response:
-        click.secho(f"Server response: {server_response.strip()}", fg="red")
-        click.secho("There was an error while registering. Exiting application.", fg="red")
+        click.secho(f"[Server response] {server_response.strip()}", fg="red")
 
     click.echo("Exiting application")
 
@@ -107,7 +106,7 @@ def messages_receiver(messenger: str):
         if decrypted_message == "/CHAT CLOSE2":
             if chatting:
                 chatting = False
-                click.echo(f"{messenger} has left the chat")
+                click.echo(f"/n {messenger} has left the chat")
 
             with LOCK:
                 chats.pop(messenger)
@@ -364,8 +363,7 @@ def new_connection(socket_: socket.socket) -> None:
         try:
             decrypted_message = decrypt(encrypted_message, PRIVATE_KEY)
         except Exception as e:
-            click.secho("There was problem while decrypting the message in the new connection", fg="red")
-            click.echo(e)
+            click.secho("Decryption error: {e}", fg="red")
             continue
 
         request, nick, addr, port = decrypted_message.split()
@@ -414,7 +412,12 @@ def register() -> None:
     with socks.socksocket() as server_socket:
         connecting_spinner = Halo(text="Connecting to server", spinner="dots4", placement="right", color="green")
         connecting_spinner.start()
-        server_socket.connect(SERVER_INFO)
+        try:
+            server_socket.connect(SERVER_INFO)
+        except Exception as e:
+            connecting_spinner.fail("Server connection failed")
+            click.secho(f"[Server connection error] {e}", fg="red")
+            close_app()
         connecting_spinner.succeed("Server connected")
 
         with LOCK:
@@ -445,7 +448,7 @@ def main():
     This function initializes the socket, sets up the service with the specified host and port, registers the client, starts a new connection thread, and handles user options.
     """
     if not all([HOST, PORT, SERVER_INFO, ADDRESS]):
-        click.secho("Missing variables in config", fg="red")
+        click.secho("[Configuration error] Missing variables in config", fg="red")
         click.echo("Click any key to close app")
         if click.getchar():
             sys.exit()
