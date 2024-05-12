@@ -5,12 +5,13 @@ from _thread import start_new_thread
 
 from cryptography.hazmat.primitives import serialization
 
-from _config import HOST, PORT
-from helpers import clean_terminal
+from config import load_config
 from connection import read_data, send_response, service_setup
+from helpers import clean_terminal
 
 
 users = {}
+HOST, PORT = load_config()
 
 def handle_requests(client_socket: socket.socket, message: str) -> None:
     """
