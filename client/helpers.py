@@ -6,11 +6,25 @@ import click
 from halo import Halo
 from connection import read_data
 
+
 def clean_terminal():
     """
     This function is responsible for cleaning the terminal.
     """
     os.system('cls' if os.name == 'nt' else 'clear')
+
+
+def display_chat(messenger: str, messages: list[str]) -> None:
+    """
+    This function is responsible for displaying chat messages.
+    """
+    clean_terminal()
+    click.echo(f"Chatting with {messenger}\n")
+    print(*messages, sep="\n")
+
+    click.echo("\n[1] Write message")
+    click.echo("[2] Close chat")
+    click.echo("[3] Go back to main menu\n")
 
 
 @Halo(text="Loading users", spinner="dots")

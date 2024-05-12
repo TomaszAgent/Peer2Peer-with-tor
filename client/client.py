@@ -1,5 +1,3 @@
-import json
-import os
 import socket
 import time
 import threading
@@ -11,15 +9,13 @@ from halo import Halo
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from _config import HOST, PORT, SERVER_INFO
-from helpers import clean_terminal, get_users, select_user
+from _config import HOST, PORT, SERVER_INFO, HIDDEN_SERVICE_ADDRESS
+from helpers import clean_terminal, get_users, select_user, display_chat
 from security import rsa_keypair, encrypt, decrypt, sign, verify
 from connection import read_data, service_setup
 
 
 socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, "127.0.0.1", 9150, True)
-
-ADDRESS = open(os.getcwd().replace("\\", "/") + "/src/hidden_services/hostname", "r").read().strip()[:-6]
 
 PRIVATE_KEY, PUBLIC_KEY = rsa_keypair()
 PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
@@ -94,14 +90,15 @@ def messages_receiver(messenger: str):
 
         if decrypted_message == "/CHAT CLOSE":
             if chatting:
-                chatting = False
+                with LOCK:
+                    chatting = False
                 click.echo(f"{messenger} has left the chat")
 
+            encrypted_message = encrypt("/CHAT CLOSE2", chats[messenger]["info"]["public_key"])
+            messenger_socket.sendall(encrypted_message + b"\n\n")
             with LOCK:
-                encrypted_message = encrypt("/CHAT CLOSE2", chats[messenger]["info"]["public_key"])
-                messenger_socket.sendall(encrypted_message + b"\n\n")
                 chats.pop(messenger)
-                messenger_socket.close()
+            messenger_socket.close()
             return
 
         if decrypted_message == "/CHAT CLOSE2":
@@ -128,7 +125,7 @@ def connect_to_user(addr: str, port: int, user_public_key: rsa.RSAPublicKey) -> 
 
     signature = sign(nick.encode(), PRIVATE_KEY)
 
-    encryped_message = encrypt(f"NEW {nick} {ADDRESS} {PORT}", user_public_key)
+    encryped_message = encrypt(f"NEW {nick} {HIDDEN_SERVICE_ADDRESS} {PORT}", user_public_key)
 
     socket_conn.sendall(PUBLIC_KEY_BYTES + b"\n\n")
     time.sleep(0.5)
@@ -265,6 +262,9 @@ def chat_options() -> None:
 
 
 def chat() -> None:
+    """
+    This function is responsible for handling the chat.
+    """
     global chatting
 
     with LOCK:
@@ -272,14 +272,9 @@ def chat() -> None:
 
     chat_options_thread = threading.Thread(target=chat_options)
     chat_options_thread.start()
+    
     while current_messenger and not messaging and chatting:
-        clean_terminal()
-        click.echo(f"Chatting with {current_messenger}\n")
-        print(*chats[current_messenger]["messages"], sep="\n")
-
-        click.echo("\n[1] Write message")
-        click.echo("[2] Close chat")
-        click.echo("[3] Go back to main menu\n")
+        display_chat(current_messenger, chats[current_messenger]["messages"])
         time.sleep(1)
 
 
@@ -342,69 +337,65 @@ def user_options() -> None:
             click.echo("Invalid choice")
 
 
-def new_connection() -> None:
+def new_connection(s) -> None:
     """
     This function is responsible for handling new connections.
     """
     global running
 
     while running:
+        socket, addr = s.accept()
+        click.echo(f"New connection from {addr}")
+        messenger_public_key = read_data(socket)
+
+        messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
+
+        signature = read_data(socket)
+
+        encrypted_message = read_data(socket, return_bytes=True)
+
         try:
-            socket, addr = s.accept()
-            click.echo(f"New connection from {addr}")
-            messenger_public_key = read_data(socket)
-
-            messenger_public_key = serialization.load_pem_public_key(messenger_public_key.encode())
-
-            signature = read_data(socket)
-
-            encrypted_message = read_data(socket, return_bytes=True)
-
-            try:
-                decrypted_message = decrypt(encrypted_message, PRIVATE_KEY)
-            except Exception as e:
-                click.secho("There was problem while decrypting the message in the new connection", fg="red")
-                click.echo(e)
-                continue
-
-            request, nick, addr, port = decrypted_message.split()
-
-            if not verify(nick.encode(), signature, messenger_public_key):
-                socket.sendall("Invalid signature\n\n".encode())
-                socket.close()
-                continue
-
-            if request != "NEW":
-                socket.sendall("Invalid request\n\n".encode())
-                socket.close()
-                continue
-            elif nick in chats:
-                socket.sendall("There's already open chat\n\n".encode())
-                socket.close()
-                continue
-
-            socket.sendall("Connection Accepted\n\n".encode())
-
-            messages_receiver_thread = threading.Thread(target=messages_receiver, args=(nick,))
-
-            with LOCK:
-                chats[nick] = {
-                    "messages": [],
-                    "info": {
-                        "socket": socket,
-                        "address": addr,
-                        "port": port,
-                        "public_key": messenger_public_key,
-                    },
-                    "manage": {
-                        "running": True,
-                        "thread": messages_receiver_thread
-                    }
-                }
-
-            messages_receiver_thread.start()
+            decrypted_message = decrypt(encrypted_message, PRIVATE_KEY)
         except Exception as e:
-            print(e)
+            click.secho("There was problem while decrypting the message in the new connection", fg="red")
+            click.echo(e)
+            continue
+
+        request, nick, addr, port = decrypted_message.split()
+
+        if not verify(nick.encode(), signature, messenger_public_key):
+            socket.sendall("Invalid signature\n\n".encode())
+            socket.close()
+            continue
+        elif request != "NEW":
+            socket.sendall("Invalid request\n\n".encode())
+            socket.close()
+            continue
+        elif nick in chats:
+            socket.sendall("There's already open chat\n\n".encode())
+            socket.close()
+            continue
+
+        socket.sendall("Connection Accepted\n\n".encode())
+
+        messages_receiver_thread = threading.Thread(target=messages_receiver, args=(nick,))
+
+        with LOCK:
+            chats[nick] = {
+                "messages": [],
+                "info": {
+                    "socket": socket,
+                    "address": addr,
+                    "port": port,
+                    "public_key": messenger_public_key,
+                },
+                "manage": {
+                    "running": True,
+                    "thread": messages_receiver_thread
+                }
+            }
+
+        messages_receiver_thread.start()
 
 
 def register() -> None:
@@ -424,7 +415,7 @@ def register() -> None:
 
         register_spinner = Halo(text="Registering", spinner="dots", placement="right")
         register_spinner.start()
-        register_message = f"NEW {nick} {ADDRESS} {PORT} ".encode()
+        register_message = f"NEW {nick} {HIDDEN_SERVICE_ADDRESS} {PORT} ".encode()
         server_socket.sendall(register_message + PUBLIC_KEY_BYTES + b"\n\n")
 
         res = read_data(server_socket)
@@ -438,17 +429,21 @@ def register() -> None:
             close_app(server_response=res)
 
 
-if __name__ == "__main__":
+def main():
+    socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    service_setup(HOST, PORT, socket)
+    register()
+
+    # Create new thread for handling new connections
+    new_connection_thread = threading.Thread(target=new_connection, args=(socket,), daemon=True)
+    new_connection_thread.start()
+
+    user_options()
+
+
+if __name__ == "_`_main__":
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        service_setup(HOST, PORT, s)
-        register()
-
-        # Create new thread for handling new connections
-        new_connection_thread = threading.Thread(target=new_connection, daemon=True)
-        new_connection_thread.start()
-
-        user_options()
+        main()
     except KeyboardInterrupt:
         close_app()
     except Exception as e:
