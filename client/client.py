@@ -9,7 +9,7 @@ from halo import Halo
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from config import load_config
+from config import load_config, get_hidden_service_address
 from connection import read_data, service_setup
 from helpers import clean_terminal, get_users, select_user, display_chat
 from security import rsa_keypair, encrypt, decrypt, sign, verify
@@ -23,7 +23,7 @@ PUBLIC_KEY_BYTES = PUBLIC_KEY.public_bytes(
     format=serialization.PublicFormat.SubjectPublicKeyInfo
 )
 
-SERVER_INFO, ADDRESS, HOST, PORT = load_config()
+SERVER_INFO, HOST, PORT = load_config()
 
 connected = False
 messaging = False
@@ -127,7 +127,7 @@ def connect_to_user(addr: str, port: int, user_public_key: rsa.RSAPublicKey) -> 
 
     signature = sign(nick.encode(), PRIVATE_KEY)
 
-    encryped_message = encrypt(f"NEW {nick} {ADDRESS} {PORT}", user_public_key)
+    encryped_message = encrypt(f"NEW {nick} {get_hidden_service_address()} {PORT}", user_public_key)
 
     socket_conn.sendall(PUBLIC_KEY_BYTES + b"\n\n")
     time.sleep(0.5)
@@ -427,7 +427,7 @@ def register() -> None:
 
         register_spinner = Halo(text="Registering", spinner="dots", placement="right")
         register_spinner.start()
-        register_message = f"NEW {nick} {ADDRESS} {PORT} ".encode()
+        register_message = f"NEW {nick} {get_hidden_service_address()} {PORT} ".encode()
         server_socket.sendall(register_message + PUBLIC_KEY_BYTES + b"\n\n")
 
         res = read_data(server_socket)
@@ -447,7 +447,7 @@ def main():
 
     This function initializes the socket, sets up the service with the specified host and port, registers the client, starts a new connection thread, and handles user options.
     """
-    if not all([HOST, PORT, SERVER_INFO, ADDRESS]):
+    if not all([HOST, PORT, SERVER_INFO]):
         click.secho("[Configuration error] Missing variables in config", fg="red")
         click.echo("Click any key to close app")
         if click.getchar():
@@ -466,6 +466,7 @@ def main():
     new_connection_thread.start()
 
     user_options()
+
 
 def run():
     try:

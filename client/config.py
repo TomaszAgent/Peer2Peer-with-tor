@@ -5,8 +5,10 @@ import click
 
 _APP_PATH = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
 _CONFIG_FILE_PATH = f"{_APP_PATH}/config.ini"
-_HIDDEN_SERVICE_ADDRESS = open(f"{_APP_PATH}/hidden_service/hostname", "r").read().strip()[:-6]
 
+
+def get_hidden_service_address() -> str:
+    return open(f"{_APP_PATH}/hidden_service/hostname", "r").read().strip()[:-6]
 
 def _create_default_config():
     if not os.path.exists(_CONFIG_FILE_PATH):
@@ -49,7 +51,7 @@ def load_config() -> tuple[str, int, str, int] | None:
     host = config["Host"]["HOST"]
     port = int(config["Host"]["PORT"])
 
-    return (server_address, server_port), _HIDDEN_SERVICE_ADDRESS, host, port
+    return (server_address, server_port), host, port
 
 
 def load_hidden_services() -> list[tuple[str, str]]:
