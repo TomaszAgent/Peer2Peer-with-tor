@@ -59,4 +59,3 @@ def select_user(users: dict) -> str | None:
         return None
 
     return chosen_user_nick
-    

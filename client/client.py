@@ -272,7 +272,7 @@ def chat() -> None:
 
     chat_options_thread = threading.Thread(target=chat_options)
     chat_options_thread.start()
-    
+
     while current_messenger and not messaging and chatting:
         display_chat(current_messenger, chats[current_messenger]["messages"])
         time.sleep(1)
@@ -430,11 +430,20 @@ def register() -> None:
 
 
 def main():
+    """
+    Main function to start the client application.
+
+    This function initializes the socket, sets up the service with the specified host and port, registers the client, starts a new connection thread, and handles user options.
+    """
+    if not any([HOST, PORT, SERVER_INFO, HIDDEN_SERVICE_ADDRESS]):
+        click.secho("Missing variables in config", fg="red")
+        sys.exit()
+
     socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     service_setup(HOST, PORT, socket)
     register()
 
-    # Create new thread for handling new connections
     new_connection_thread = threading.Thread(target=new_connection, args=(socket,), daemon=True)
     new_connection_thread.start()
 
