@@ -1,4 +1,4 @@
-# Peer to Peer Chat Application
+# P2P Tor Chat
 
 This is a peer to peer chat via Tor that allows user to communitaced while staying anonymous.
 
