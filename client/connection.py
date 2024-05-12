@@ -29,6 +29,7 @@ def service_setup(host: str, post: int, socket: socket.socket) -> None:
             ("HiddenServiceDir", HIDDEN_SERVICE_PATH),
             ("HiddenServicePort", f"{PORT} {HOST}:{PORT}"),
             # If you want to add more hidden services, you can do so by adding more HiddenServiceDir and HiddenServicePort options.
+            # Rememver to write all hidden services
             # ("HiddenServiceDir", "path/to/hidden_service_directory"),
             # ("HiddenServicePort", "port host:port"),
 

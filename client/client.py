@@ -47,8 +47,6 @@ def close_chat(socket, messenger: str) -> None:
     chats[messenger]["manage"]["thread"].join()
 
 
-# Application functions
-
 def close_app(server_response: str | None = None) -> None:
     """
     This function is responsible for safely closing the application.
