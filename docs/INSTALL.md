@@ -106,7 +106,7 @@ If you encounter any problems please refer to the most common issues in the [Ser
 
 If you want to run the client and the server on the same machine you need to set up the hidden services for the server and client in both `config.ini` in the `server` and `client` directories.
 
-```
+```ini
 [HiddenServiceClient]
 HiddenServiceDir = /path/to/client/hidden/service
 HiddenServicePort = 5050 localhost:5050

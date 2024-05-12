@@ -15,7 +15,7 @@ This is a specification of the P2P Tor Chat client.
 ## Dependencies
 
 - Tor Browser [Link to download](https://www.torproject.org/download/)
-- Python 3.10 or higher
+- [Python 3.10](https://www.python.org/downloads/) or higher
 - [PySocks](https://pypi.org/project/PySocks/)
 - [click](https://pypi.org/project/click/)
 - [halo](https://pypi.org/project/halo/)
@@ -46,9 +46,12 @@ By collecting and storing this information during the registration process, the 
 
 ### Functions related to the server connection
 
-- `client.py` `register()` - sending necessary information to the server
-- `helpers.py` `get_users()` - getting information about other active peers from the server
-- `client.py` `close_app()` - sending request to the server to remove the client from the list of active peers
+[`client.py`](https://github.com/TomaszAgent/Peer2Peer-with-tor/blob/main/client/client.py):
+- `register()` - sending necessary information to the server
+- `close_app()` - sending request to the server to remove the client from the list of active peers
+
+[`helpers.py`](https://github.com/TomaszAgent/Peer2Peer-with-tor/blob/main/client/helpers.py):
+- `get_users()` - getting information about other active peers from the server
 
 ## Peer Connection
 
@@ -62,14 +65,16 @@ Connection Process
 
 2. Verification: Upon receiving the client's information, the peer verifies the provided signature to confirm the client's identity. Based on this verification, the peer decides whether to accept or deny the connection request.
 
-3. Established Connection: If the connection is accepted, the client can begin exchanging messages with the peer. Messages sent from the client to the peer are encrypted using the peer's public key, ensuring confidentiality and security during transmission.\
+3. Established Connection: If the connection is accepted, the client can begin exchanging messages with the peer. Messages sent from the client to the peer are encrypted using the peer's public key, ensuring confidentiality and security during transmission.
 
 ### Functions related to the peer connection
-`client.py` `connect_to_user()` - sending connection request to the peer
-`client.py` `new_connection()` - accepting or denying connection request from the peer
-`client.py` `send_message()` - sending encrypted message to the peer
-`client.py` `message_receiver()` - receiving and decrypting message from the peer
-`client.py` `close_chat()` - closing the connection with the peer
+
+[`client.py`](https://github.com/TomaszAgent/Peer2Peer-with-tor/blob/main/client/client.py):
+- `connect_to_user()` - sending connection request to the peer
+- `new_connection()` - accepting or denying connection request from the peer
+- `send_message()` - sending encrypted message to the peer
+- `message_receiver()` - receiving and decrypting message from the peer
+- `close_chat()` - closing the connection with the peer
 
 
 ## Message Encryption
@@ -79,7 +84,7 @@ The messages are encrypted with the peer's public key. The encryption is done wi
 Additionally at the beginning of the connection, the client send his signature to the peer. The peer can verify the signature with the client's public key.
 
 ### Functions related to the message encryption
-`security.py` - functions related to the security of the connection
+[`security.py`](https://github.com/TomaszAgent/Peer2Peer-with-tor/blob/main/client/security.py) - functions related to the security of the connection
 
 ## Troubleshooting
 

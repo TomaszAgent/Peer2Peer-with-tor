@@ -13,7 +13,7 @@ This is a specification of the P2P Tor Chat server.
 ## Dependencies
 
 - Tor Browser [Link to download](https://www.torproject.org/download/)
-- Python 3.10 or higher
+- [Python 3.10](https://www.python.org/downloads/) or higher
 - [PySocks](https://pypi.org/project/PySocks/)
 - [click](https://pypi.org/project/click/)
 - [halo](https://pypi.org/project/halo/)
@@ -42,9 +42,10 @@ By collecting and storing this information during the registration process, the 
 
 ### Functions related to the peer connection
 
-- `server.py` `connection_handler()` - handling incoming connections from peers
-- `server.py` `register_user()` - registering a new peer to list of active peers
-- `server.py` `handle_request()` - handling requests from peers
+[`server.py`](https://github.com/TomaszAgent/Peer2Peer-with-tor/blob/main/server/server.py):
+- `connection_handler()` - handling incoming connections from peers
+- `register_user()` - registering a new peer to list of active peers
+- `handle_request()` - handling requests from peers
 
 ## Troubleshooting
 
